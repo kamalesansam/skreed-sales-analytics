@@ -6,6 +6,7 @@ import { DollarSign, Package, CalendarIcon } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -86,6 +87,7 @@ export default function DashboardClientWrapper({ rawData }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Skreed Sales Analytics</h1>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Select value={dateFilter} onValueChange={setDateFilter}>
             <SelectTrigger className="w-[180px] bg-card border-border text-sm">
               <SelectValue placeholder="Select Date" />

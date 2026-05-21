@@ -394,11 +394,11 @@ export default function MasterDrillDownChart({ rawData }) {
       <CardContent className="flex-1 pt-6 min-h-[400px]">
         <ResponsiveContainer width="100%" height={400} minWidth={200} minHeight={200}>
           <BarChart data={currentData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }} barGap={0} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis
               dataKey="name"
-              stroke="#374151"
-              tick={{ fill: '#111827', fontWeight: 'bold', fontSize: 12 }}
+              stroke="var(--muted-foreground)"
+              tick={{ fill: 'var(--foreground)', fontWeight: 'bold', fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               interval={0}
@@ -408,7 +408,7 @@ export default function MasterDrillDownChart({ rawData }) {
             />
             <YAxis
               yAxisId="left"
-              stroke="#6b7280"
+              stroke="var(--muted-foreground)"
               fontSize={12}
               tickLine={false}
               axisLine={false}
@@ -417,13 +417,13 @@ export default function MasterDrillDownChart({ rawData }) {
             <YAxis
               yAxisId="right"
               orientation="right"
-              stroke="#6b7280"
+              stroke="var(--muted-foreground)"
               fontSize={12}
               tickLine={false}
               axisLine={false}
               tickFormatter={(val) => `$${val}`}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f3f4f6" }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(128, 128, 128, 0.3)" }} />
             <Bar
               yAxisId="left"
               dataKey="quantity"
