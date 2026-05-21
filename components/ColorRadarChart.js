@@ -75,9 +75,9 @@ export default function ColorRadarChart({ data }) {
         <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[350px]">
           <RadarChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            <PolarAngleAxis dataKey="color" className="text-xs text-zinc-400" />
-            <PolarGrid className="stroke-zinc-800" />
-            <PolarRadiusAxis angle={30} domain={[0, 'auto']} className="text-xs text-zinc-500" />
+            <PolarAngleAxis dataKey="color" className="text-xs text-muted-foreground" />
+            <PolarGrid className="stroke-border" />
+            <PolarRadiusAxis angle={30} domain={[0, 'auto']} className="text-xs text-muted-foreground" />
             <Radar
               dataKey="sales"
               fill="var(--color-sales)"

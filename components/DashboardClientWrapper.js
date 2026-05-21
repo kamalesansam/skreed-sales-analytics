@@ -83,14 +83,14 @@ export default function DashboardClientWrapper({ rawData }) {
   return (
     <div className="space-y-8">
       {/* Date Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Skreed Sales Analytics</h1>
         <div className="flex items-center gap-2">
           <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="w-[180px] bg-zinc-950 border-zinc-800 text-sm">
+            <SelectTrigger className="w-[180px] bg-card border-border text-sm">
               <SelectValue placeholder="Select Date" />
             </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
+            <SelectContent className="bg-card border-border text-foreground">
               <SelectItem value="all">All Time</SelectItem>
               <SelectItem value="24h">Last 24 Hours</SelectItem>
               <SelectItem value="week">Last Week</SelectItem>
@@ -106,13 +106,13 @@ export default function DashboardClientWrapper({ rawData }) {
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={`w-[140px] justify-start text-left font-normal bg-zinc-950 border-zinc-800 text-sm ${!customDate.start && "text-zinc-400"}`}
+                    className={`w-[140px] justify-start text-left font-normal bg-card border-border text-sm ${!customDate.start && "text-muted-foreground"}`}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {customDate.start ? format(new Date(customDate.start), "MMM d, yyyy") : <span>Start Date</span>}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-zinc-900 border-zinc-800 text-zinc-100">
+                <PopoverContent className="w-auto p-0 bg-card border-border text-foreground">
                   <Calendar
                     mode="single"
                     selected={customDate.start ? new Date(customDate.start) : undefined}
@@ -121,18 +121,18 @@ export default function DashboardClientWrapper({ rawData }) {
                   />
                 </PopoverContent>
               </Popover>
-              <span className="text-zinc-500">to</span>
+              <span className="text-muted-foreground">to</span>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={`w-[140px] justify-start text-left font-normal bg-zinc-950 border-zinc-800 text-sm ${!customDate.end && "text-zinc-400"}`}
+                    className={`w-[140px] justify-start text-left font-normal bg-card border-border text-sm ${!customDate.end && "text-muted-foreground"}`}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {customDate.end ? format(new Date(customDate.end), "MMM d, yyyy") : <span>End Date</span>}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-zinc-900 border-zinc-800 text-zinc-100">
+                <PopoverContent className="w-auto p-0 bg-card border-border text-foreground">
                   <Calendar
                     mode="single"
                     selected={customDate.end ? new Date(customDate.end) : undefined}
@@ -150,8 +150,8 @@ export default function DashboardClientWrapper({ rawData }) {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-zinc-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
@@ -162,8 +162,8 @@ export default function DashboardClientWrapper({ rawData }) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Total Items Sold</CardTitle>
-            <Package className="h-4 w-4 text-zinc-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Items Sold</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
