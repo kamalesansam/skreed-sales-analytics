@@ -43,7 +43,7 @@ export async function GET(request) {
     const { data: { user } } = await supabase.auth.getUser()
 
     // The Kick-Out Logic
-    if (user && !ALLOWED_EMAILS.includes(user.email)) {
+    if (user && !ALLOWED_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
       await supabase.auth.signOut()
       return NextResponse.redirect(`${origin}/login?error=Access Denied: Unauthorized Email`)
     }
