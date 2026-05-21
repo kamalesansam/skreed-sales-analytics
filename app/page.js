@@ -1,10 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package } from "lucide-react";
-import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
-import ColorRadarChart from "@/components/ColorRadarChart";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import MasterDrillDownChart from "@/components/MasterDrillDownChart";
+import DashboardClientWrapper from "@/components/DashboardClientWrapper";
 
 export default async function Page() {
   const supabase = await createClient();
@@ -71,111 +66,16 @@ export default async function Page() {
     ...accessoriesData
   ];
 
-  // Aggregating brandRevenueData
-  const brandRevenueData = [
-    { name: 'Apple', value: appleData.reduce((sum, item) => sum + (Number(item.total_sales) || 0), 0) },
-    { name: 'Samsung', value: samsungData.reduce((sum, item) => sum + (Number(item.total_sales) || 0), 0) },
-    { name: 'Google', value: googleData.reduce((sum, item) => sum + (Number(item.total_sales) || 0), 0) },
-    { name: 'Accessories', value: accessoriesData.reduce((sum, item) => sum + (Number(item.total_sales) || 0), 0) }
-  ].filter(b => b.value > 0);
-
-  // Aggregating topModelsData
-  const allModels = [...appleData, ...samsungData, ...googleData, ...accessoriesData];
-  
-  const getModelName = (item) => {
-    if (item.device_model) return item.device_model;
-    if (item.product_type === 'Screen Protector Kits') return `${item.iphone_series} Screen Protector`;
-    if (item.product_type === 'Power Banks') return `${item.finish} Power Bank`;
-    if (item.product_type === 'Lanyards') return `${item.type} Lanyard`;
-    return item.product_title || 'Unknown Model';
-  };
-
-  const modelMap = {};
-  allModels.forEach(item => {
-    const modelName = getModelName(item);
-    if (!modelMap[modelName]) modelMap[modelName] = 0;
-    modelMap[modelName] += (Number(item.quantity) || 0);
-  });
-
-  const topModelsData = Object.entries(modelMap)
-    .map(([model, sales]) => ({ model, sales }))
-    .sort((a, b) => b.sales - a.sales)
-    .slice(0, 5);
-
   return (
-    // We add the 'dark' class here so that shadcn components use their dark CSS variables natively
     <main className="dark min-h-screen bg-zinc-950 text-white p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* Step 3: Clean Header */}
-        <header className="pb-4">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Skreed Sales Analytics</h1>
-        </header>
-
+      <div className="max-w-7xl mx-auto">
         {error && (
           <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-lg text-red-400 mb-8">
             <p className="font-semibold">Error fetching data</p>
             <p className="text-sm">{error.message}</p>
           </div>
         )}
-
-        {/* Step 4: Metric Cards */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Total Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-zinc-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Total Items Sold</CardTitle>
-              <Package className="h-4 w-4 text-zinc-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {totalItemsSold.toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="w-full">
-          <MasterDrillDownChart rawData={rawSales} />
-        </div>
-
-        {/* Step 6: Render Charts */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Revenue by Brand</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80 w-full pt-4">
-                <BrandRevenueChart data={brandRevenueData} />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Top 5 Selling Models</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80 w-full pt-4">
-                <TopModelsChart data={topModelsData} />
-              </div>
-            </CardContent>
-          </Card>
-
-          <ColorRadarChart data={rawSales} />
-        </div>
+        <DashboardClientWrapper rawData={rawSales} />
       </div>
     </main>
   );

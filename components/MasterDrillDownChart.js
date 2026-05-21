@@ -15,12 +15,8 @@ if (typeof window !== "undefined") {
 }
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown, CalendarIcon, RotateCcw } from 'lucide-react';
+import { Loader2, ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
 
 const createNode = () => ({ quantity: 0, revenue: 0, children: {} });
 
@@ -175,8 +171,6 @@ export default function MasterDrillDownChart({ rawData }) {
   const [error, setError] = useState(null);
   const [skeleton, setSkeleton] = useState(null);
   const [sortConfig, setSortConfig] = useState({ field: 'order_date', direction: 'desc' });
-  const [dateFilter, setDateFilter] = useState("all");
-  const [customDate, setCustomDate] = useState({ start: '', end: '' });
 
   const handleSort = (field) => {
     if (sortConfig.field === field) {
@@ -209,117 +203,17 @@ export default function MasterDrillDownChart({ rawData }) {
 
         const rootNode = buildSkeleton(colorGroupMap);
 
-        const [appleRes, samsungRes, googleRes, airpodsRes, pbRes, lanRes, spRes] = await Promise.all([
-          supabase.from('apple_cases').select('order_date, order_name, series, device_model, finish, case_type, print, color_group, variant_name, quantity, total_sales'),
-          supabase.from('samsung_cases').select('order_date, order_name, series, device_model, finish, print, color_group, variant_name, quantity, total_sales'),
-          supabase.from('google_cases').select('order_date, order_name, series, device_model, finish, print, color_group, variant_name, quantity, total_sales'),
-          supabase.from('airpods_cases').select('order_date, order_name, series, device_model, print, color_group, variant_name, quantity, total_sales'),
-          supabase.from('power_banks').select('order_date, order_name, finish, color_group, variant_name, quantity, total_sales'),
-          supabase.from('lanyards').select('order_date, order_name, type, color, quantity, total_sales'),
-          supabase.from('screen_protectors').select('order_date, order_name, iphone_series, variant_title, quantity, total_sales')
-        ]);
-
-        if (appleRes.error) throw appleRes.error;
-        if (samsungRes.error) throw samsungRes.error;
-        if (googleRes.error) throw googleRes.error;
-        if (airpodsRes.error) throw airpodsRes.error;
-        if (pbRes.error) throw pbRes.error;
-        if (lanRes.error) throw lanRes.error;
-        if (spRes.error) throw spRes.error;
-
-        const filterOrders = (data) => (data || []).filter(order => {
-          if (!order.order_name) return true;
-          const match = String(order.order_name).match(/\d+/);
-          if (!match) return true;
-          if (parseInt(match[0], 10) < 1017) return false;
-
-          if (dateFilter !== 'all' && order.order_date) {
-            const rowDate = new Date(order.order_date);
-            const now = new Date();
-            if (dateFilter === '24h') {
-              return (now - rowDate) <= 24 * 60 * 60 * 1000;
-            } else if (dateFilter === 'week') {
-              return (now - rowDate) <= 7 * 24 * 60 * 60 * 1000;
-            } else if (dateFilter === 'month') {
-              return (now - rowDate) <= 30 * 24 * 60 * 60 * 1000;
-            } else if (dateFilter === 'quarter') {
-              return (now - rowDate) <= 90 * 24 * 60 * 60 * 1000;
-            } else if (dateFilter === 'year') {
-              return (now - rowDate) <= 365 * 24 * 60 * 60 * 1000;
-            } else if (dateFilter === 'custom') {
-              if (customDate.start && new Date(customDate.start) > rowDate) return false;
-              if (customDate.end && new Date(customDate.end) < rowDate) return false;
-            }
-          }
-
-          return true;
-        });
-
         const paths = [];
 
-        filterOrders(appleRes.data).forEach(row => {
+        (rawData || []).forEach(row => {
           const qty = Number(row.quantity) || 0;
           const rev = Number(row.total_sales) || 0;
           if (!qty && !rev) return;
-          if (row.print === "Printed") {
-            paths.push({ path: ["Apple", row.series, row.device_model, row.finish, row.case_type, "Printed", "Printed"], qty, rev });
-          } else {
-            paths.push({ path: ["Apple", row.series, row.device_model, row.finish, row.case_type, "Solids", row.color_group, row.variant_name], qty, rev });
+          
+          const path = getRowPath(row);
+          if (path && path.length > 0) {
+            paths.push({ path, qty, rev });
           }
-        });
-
-        filterOrders(samsungRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          if (row.print === "Printed") {
-            paths.push({ path: ["Samsung", row.series, row.device_model, row.finish, "Printed", "Printed"], qty, rev });
-          } else {
-            paths.push({ path: ["Samsung", row.series, row.device_model, row.finish, "Solids", row.color_group, row.variant_name], qty, rev });
-          }
-        });
-
-        filterOrders(googleRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          if (row.print === "Printed") {
-            paths.push({ path: ["Google", row.series, row.device_model, row.finish, "Printed", "Printed"], qty, rev });
-          } else {
-            paths.push({ path: ["Google", row.series, row.device_model, row.finish, "Solids", row.color_group, row.variant_name], qty, rev });
-          }
-        });
-
-        filterOrders(airpodsRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          if (row.print === "Printed") {
-            paths.push({ path: ["Accessories", "AirPods Cases", row.series, row.device_model, "Printed", "Printed"], qty, rev });
-          } else {
-            paths.push({ path: ["Accessories", "AirPods Cases", row.series, row.device_model, "Solids", row.color_group, row.variant_name], qty, rev });
-          }
-        });
-
-        filterOrders(pbRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          paths.push({ path: ["Accessories", "Power Banks", row.finish, row.color_group, row.variant_name], qty, rev });
-        });
-
-        filterOrders(lanRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          paths.push({ path: ["Accessories", "Lanyards", row.type, row.color], qty, rev });
-        });
-
-        filterOrders(spRes.data).forEach(row => {
-          const qty = Number(row.quantity) || 0;
-          const rev = Number(row.total_sales) || 0;
-          if (!qty && !rev) return;
-          paths.push({ path: ["Accessories", "Screen Protector Kits", row.iphone_series, row.variant_title], qty, rev });
         });
 
         paths.forEach(({ path, qty, rev }) => {
@@ -349,7 +243,7 @@ export default function MasterDrillDownChart({ rawData }) {
       }
     }
     fetchData();
-  }, [dateFilter, customDate.start, customDate.end]);
+  }, [rawData]);
 
   const currentData = useMemo(() => {
     if (!skeleton) return [];
@@ -411,31 +305,15 @@ export default function MasterDrillDownChart({ rawData }) {
 
   const filteredRawData = useMemo(() => {
     if (!rawData) return [];
-    const filtered = rawData.filter(row => {
-      if (dateFilter !== 'all' && row.order_date) {
-        const rowDate = new Date(row.order_date);
-        const now = new Date();
-        if (dateFilter === '24h' && (now - rowDate) > 24 * 60 * 60 * 1000) return false;
-        if (dateFilter === 'week' && (now - rowDate) > 7 * 24 * 60 * 60 * 1000) return false;
-        if (dateFilter === 'month' && (now - rowDate) > 30 * 24 * 60 * 60 * 1000) return false;
-        if (dateFilter === 'quarter' && (now - rowDate) > 90 * 24 * 60 * 60 * 1000) return false;
-        if (dateFilter === 'year' && (now - rowDate) > 365 * 24 * 60 * 60 * 1000) return false;
-        if (dateFilter === 'custom') {
-          if (customDate.start && new Date(customDate.start) > rowDate) return false;
-          if (customDate.end && new Date(customDate.end) < rowDate) return false;
-        }
-      }
-
+    return rawData.filter(row => {
       const path = getRowPath(row);
       for (let i = 0; i < drillPath.length; i++) {
-        if (!path[i] || path[i].trim().toLowerCase() !== drillPath[i].trim().toLowerCase()) {
+        if (!path[i] || path[i].toLowerCase() !== drillPath[i].toLowerCase()) {
           return false;
         }
       }
       return true;
-    });
-
-    return filtered.sort((a, b) => {
+    }).sort((a, b) => {
       if (sortConfig.field === 'order_date') {
         const dateA = a.order_date ? new Date(a.order_date).getTime() : 0;
         const dateB = b.order_date ? new Date(b.order_date).getTime() : 0;
@@ -450,7 +328,7 @@ export default function MasterDrillDownChart({ rawData }) {
       }
       return 0;
     });
-  }, [rawData, drillPath, sortConfig, dateFilter, customDate.start, customDate.end]);
+  }, [rawData, drillPath, sortConfig]);
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
@@ -487,76 +365,15 @@ export default function MasterDrillDownChart({ rawData }) {
     );
   }
 
-  const breadcrumbs = ["All Categories", ...drillPath].join(" > ");
   const isRoot = drillPath.length === 0;
 
   return (
     <Card className="w-full bg-zinc-900 border-zinc-800 text-zinc-100 flex flex-col">
       <CardHeader className="flex flex-col space-y-4 pb-2 border-b border-zinc-800">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-col space-y-1">
-            <CardTitle className="text-lg">Total Sales & Orders for Mobile Cases/Accessories</CardTitle>
-            <p className="text-sm text-zinc-400 font-medium">{breadcrumbs}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[180px] bg-zinc-950 border-zinc-800 text-sm">
-                <SelectValue placeholder="Select Date" />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
-                <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="24h">Last 24 Hours</SelectItem>
-                <SelectItem value="week">Last Week</SelectItem>
-                <SelectItem value="month">Last Month</SelectItem>
-                <SelectItem value="quarter">Last Quarter</SelectItem>
-                <SelectItem value="year">Last Year</SelectItem>
-                <SelectItem value="custom">Custom Date</SelectItem>
-              </SelectContent>
-            </Select>
-            {dateFilter === 'custom' && (
-              <div className="flex items-center gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={`w-[140px] justify-start text-left font-normal bg-zinc-950 border-zinc-800 text-sm ${!customDate.start && "text-zinc-400"}`}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {customDate.start ? format(new Date(customDate.start), "MMM d, yyyy") : <span>Start Date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 bg-zinc-900 border-zinc-800 text-zinc-100">
-                    <Calendar
-                      mode="single"
-                      selected={customDate.start ? new Date(customDate.start) : undefined}
-                      onSelect={(date) => setCustomDate({ ...customDate, start: date ? format(date, "yyyy-MM-dd") : '' })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <span className="text-zinc-500">to</span>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={`w-[140px] justify-start text-left font-normal bg-zinc-950 border-zinc-800 text-sm ${!customDate.end && "text-zinc-400"}`}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {customDate.end ? format(new Date(customDate.end), "MMM d, yyyy") : <span>End Date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 bg-zinc-900 border-zinc-800 text-zinc-100">
-                    <Calendar
-                      mode="single"
-                      selected={customDate.end ? new Date(customDate.end) : undefined}
-                      onSelect={(date) => setCustomDate({ ...customDate, end: date ? format(date, "yyyy-MM-dd") : '' })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xl font-bold">
+            {isRoot ? "Master Sales Breakdown" : `Drill Down: ${drillPath.join(' > ')}`}
+          </CardTitle>
         </div>
         {!isRoot && (
           <div className="flex gap-2">
