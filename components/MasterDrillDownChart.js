@@ -21,11 +21,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const createNode = () => ({ quantity: 0, revenue: 0, children: {} });
 
 const APPLE_MODELS = {
-  "iPhone 17": ["iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17", "iPhone 17 Air"],
-  "iPhone 16": ["iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16"],
-  "iPhone 15": ["iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15"],
-  "iPhone 14": ["iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14"],
-  "iPhone 13": ["iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 Mini", "iPhone 13"],
+  "iPhone 17 series": ["iPhone 17 Pro Max", "iPhone 17 Pro", "iPhone 17", "iPhone 17 Air"],
+  "iPhone 16 series": ["iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16"],
+  "iPhone 15 series": ["iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15"],
+  "iPhone 14 series": ["iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14"],
+  "iPhone 13 series": ["iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 Mini", "iPhone 13"],
 };
 
 const SAMSUNG_MODELS = {
@@ -209,7 +209,7 @@ export default function MasterDrillDownChart({ rawData }) {
           const qty = Number(row.quantity) || 0;
           const rev = Number(row.total_sales) || 0;
           if (!qty && !rev) return;
-          
+
           const path = getRowPath(row);
           if (path && path.length > 0) {
             paths.push({ path, qty, rev });
