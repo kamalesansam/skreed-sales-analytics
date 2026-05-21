@@ -60,13 +60,13 @@ export default function ColorRadarChart({ data }) {
           onValueChange={(value) => setFilters(value)}
           className="mt-4 flex-wrap justify-center gap-2"
         >
-          <ToggleGroupItem value="phones" aria-label="Toggle Phone Cases" className="text-xs">
+          <ToggleGroupItem value="phones" aria-label="Toggle Phone Cases" className="text-xs data-[state=on]:hover:text-neutral-400">
             Phone Cases
           </ToggleGroupItem>
-          <ToggleGroupItem value="powerbanks" aria-label="Toggle Power Banks" className="text-xs">
+          <ToggleGroupItem value="powerbanks" aria-label="Toggle Power Banks" className="text-xs data-[state=on]:hover:text-neutral-400">
             Power Banks
           </ToggleGroupItem>
-          <ToggleGroupItem value="airpods" aria-label="Toggle AirPods Cases" className="text-xs">
+          <ToggleGroupItem value="airpods" aria-label="Toggle AirPods Cases" className="text-xs data-[state=on]:hover:text-neutral-400">
             AirPods Cases
           </ToggleGroupItem>
         </ToggleGroup>

@@ -67,7 +67,7 @@ export default async function Page() {
   ];
 
   return (
-    <main className="dark min-h-screen bg-zinc-950 text-white p-8 font-sans">
+    <main className="dark min-h-screen bg-[#1c1c1e] text-neutral-50 p-8">
       <div className="max-w-7xl mx-auto">
         {error && (
           <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-lg text-red-400 mb-8">
