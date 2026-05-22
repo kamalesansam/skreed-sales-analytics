@@ -48,6 +48,7 @@ export async function GET(request) {
       'prathamk@zeosmobile.com',
       'premsanjay@hotmail.com',
       'anudeepkuamr@gmail.com',
+      'zeoshyd@outlook.com'
 
     ]
 
