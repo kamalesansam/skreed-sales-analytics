@@ -68,7 +68,7 @@ export function FacetedFilter({
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className="hidden group-hover:flex h-6 px-2 text-[10px] uppercase font-semibold"
+                      className="hidden group-hover:flex h-6 px-2 text-[10px] uppercase font-semibold cursor-pointer hover:bg-slate-900 hover:text-slate-100 dark:hover:bg-slate-100 dark:hover:text-slate-900 transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
