@@ -7,7 +7,7 @@ const montserrat = Montserrat({
 });
 
 export const metadata = {
-  title: "Skreed Data Analysis",
+  title: "Skreed Sales Analytics",
   description: "Total Sales",
 };
 
