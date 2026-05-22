@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { formatLiteralDate } from '../lib/date-utils';
 import { createClient } from '@/utils/supabase/client';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid, LabelList } from 'recharts';
 
@@ -504,13 +505,7 @@ export default function MasterDrillDownChart({ rawData }) {
                 filteredRawData.map((row, idx) => (
                   <TableRow key={idx} className="border-b border-border hover:bg-muted/50">
                     <TableCell className="text-muted-foreground">
-                      {row.order_date
-                        ? new Date(row.order_date).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })
-                        : '-'}
+                      {formatLiteralDate(row.order_date)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{row.order_name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{row.series || '-'}</TableCell>

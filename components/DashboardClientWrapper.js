@@ -12,33 +12,148 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { getLiteralDateString, getPastDateString } from '../lib/date-utils';
+import { FacetedFilter } from "./FacetedFilter";
 
 export default function DashboardClientWrapper({ rawData }) {
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
 
-  const filteredRawData = useMemo(() => {
+  const [facets, setFacets] = useState({
+    l1: new Set(),
+    l2: new Set(),
+    l3: new Set(),
+    l4: new Set(),
+    l5: new Set(),
+    l6: new Set(),
+    l7: new Set(),
+    l8: new Set()
+  });
+
+  const handleSelectFacet = (level, value, isOnly, allOptionsForLevel) => {
+    setFacets(prev => {
+      const newFacets = { ...prev };
+      let set = new Set(prev[level]);
+      if (isOnly) {
+        set.clear();
+        set.add(value);
+      } else {
+        if (set.size === 0 && allOptionsForLevel) {
+          set = new Set(allOptionsForLevel);
+          set.delete(value);
+        } else {
+          if (set.has(value)) set.delete(value);
+          else set.add(value);
+          
+          if (allOptionsForLevel && set.size === allOptionsForLevel.length) {
+            set.clear();
+          }
+        }
+      }
+      newFacets[level] = set;
+      return newFacets;
+    });
+  };
+
+  const getL1 = (row) => {
+    if (row.product_type === 'Power Banks') return 'Powerbanks';
+    if (row.product_type === 'AirPods Cases') return 'AirPods Cases';
+    if (row.product_type === 'Lanyards') return 'Lanyards';
+    if (row.product_type === 'Screen Protector Kits') return 'Screen Protectors';
+    if (row.brand === 'Apple') return 'Apple';
+    if (row.brand === 'Samsung') return 'Samsung';
+    if (row.brand === 'Google') return 'Google Pixel';
+    return 'Other';
+  };
+
+  const dateFilteredData = useMemo(() => {
     if (!rawData) return [];
 
     return rawData.filter(row => {
       if (dateFilter !== 'all' && row.order_date) {
-        const rowDate = new Date(row.order_date).getTime();
-        const now = Date.now();
+        const rowLiteral = getLiteralDateString(row.order_date);
 
-        if (dateFilter === '24h') return (now - rowDate) <= 24 * 60 * 60 * 1000;
-        if (dateFilter === 'week') return (now - rowDate) <= 7 * 24 * 60 * 60 * 1000;
-        if (dateFilter === 'month') return (now - rowDate) <= 30 * 24 * 60 * 60 * 1000;
-        if (dateFilter === 'quarter') return (now - rowDate) <= 90 * 24 * 60 * 60 * 1000;
-        if (dateFilter === 'year') return (now - rowDate) <= 365 * 24 * 60 * 60 * 1000;
+        if (dateFilter === '24h') return rowLiteral >= getPastDateString(1);
+        if (dateFilter === 'week') return rowLiteral >= getPastDateString(7);
+        if (dateFilter === 'month') return rowLiteral >= getPastDateString(30);
+        if (dateFilter === 'quarter') return rowLiteral >= getPastDateString(90);
+        if (dateFilter === 'year') return rowLiteral >= getPastDateString(365);
         if (dateFilter === 'custom') {
-          if (customDate.start && new Date(customDate.start).getTime() > rowDate) return false;
-          // For end date, we add 24 hours to include the whole day
-          if (customDate.end && new Date(customDate.end).getTime() + (24 * 60 * 60 * 1000) < rowDate) return false;
+          if (customDate.start && rowLiteral < customDate.start) return false;
+          if (customDate.end && rowLiteral > customDate.end) return false;
         }
       }
       return true;
     });
   }, [rawData, dateFilter, customDate.start, customDate.end]);
+
+  const filteredRawData = useMemo(() => {
+    return dateFilteredData.filter(row => {
+      const l1 = getL1(row);
+      if (facets.l1.size > 0 && !facets.l1.has(l1)) return false;
+      if (facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
+      if (facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
+      if (facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
+      if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
+      if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
+      if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
+      if (facets.l8.size > 0 && row.color && !facets.l8.has(row.color)) return false;
+      return true;
+    });
+  }, [dateFilteredData, facets]);
+  
+  const facetOptions = useMemo(() => {
+    const l1Opts = ['Apple', 'Samsung', 'Google Pixel', 'AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
+    
+    const filterUpTo = (levelExclusions = []) => {
+      return dateFilteredData.filter(row => {
+        const l1 = getL1(row);
+        if (!levelExclusions.includes('l1') && facets.l1.size > 0 && !facets.l1.has(l1)) return false;
+        if (!levelExclusions.includes('l2') && facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
+        if (!levelExclusions.includes('l3') && facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
+        if (!levelExclusions.includes('l4') && facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
+        if (!levelExclusions.includes('l5') && facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
+        if (!levelExclusions.includes('l6') && facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
+        if (!levelExclusions.includes('l7') && facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
+        return true;
+      });
+    };
+
+    const getOpts = (data, key) => Array.from(new Set(data.map(r => r[key]).filter(Boolean))).sort();
+
+    let l7Opts = ['Black', 'Beige', 'Blue', 'Green', 'Pink', 'Red', 'White', 'Yellow', 'Purple', 'Clear'];
+    if (facets.l1.has('Lanyards')) {
+      l7Opts = ['Black', 'Beige'];
+    }
+
+    return {
+      l1: l1Opts,
+      l2: getOpts(filterUpTo(['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8']), 'series'),
+      l3: getOpts(filterUpTo(['l3', 'l4', 'l5', 'l6', 'l7', 'l8']), 'device_model'),
+      l4: getOpts(filterUpTo(['l4', 'l5', 'l6', 'l7', 'l8']), 'finish'),
+      l5: getOpts(filterUpTo(['l5', 'l6', 'l7', 'l8']), 'case_type'),
+      l6: getOpts(filterUpTo(['l6', 'l7', 'l8']), 'print'),
+      l7: l7Opts,
+      l8: getOpts(filterUpTo(['l8']), 'color'),
+    };
+  }, [dateFilteredData, facets]);
+
+  const l1HasPwrLanyard = facets.l1.has('Powerbanks') || facets.l1.has('Lanyards');
+  const l1HasAirLanyardScreen = facets.l1.has('AirPods Cases') || facets.l1.has('Lanyards') || facets.l1.has('Screen Protectors');
+  const l1IncludesApple = facets.l1.has('Apple');
+  const l1HasLanyardScreen = facets.l1.has('Lanyards') || facets.l1.has('Screen Protectors');
+  const l1HasScreen = facets.l1.has('Screen Protectors');
+  
+  const facetDisabled = {
+    l1: false,
+    l2: l1HasPwrLanyard,
+    l3: l1HasPwrLanyard,
+    l4: l1HasAirLanyardScreen,
+    l5: !l1IncludesApple,
+    l6: l1HasLanyardScreen,
+    l7: l1HasScreen,
+    l8: l1HasLanyardScreen,
+  };
 
   const totalRevenue = useMemo(() => {
     return filteredRawData.reduce((sum, order) => sum + (Number(order.total_sales) || 0), 0);
@@ -176,6 +291,16 @@ export default function DashboardClientWrapper({ rawData }) {
       </div>
 
       <div className="w-full">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <FacetedFilter title="Master Category" options={facetOptions.l1} selectedValues={facets.l1} onSelect={(v, o, allOpts) => handleSelectFacet('l1', v, o, allOpts)} disabled={facetDisabled.l1} />
+          <FacetedFilter title="Device Series" options={facetOptions.l2} selectedValues={facets.l2} onSelect={(v, o, allOpts) => handleSelectFacet('l2', v, o, allOpts)} disabled={facetDisabled.l2} />
+          <FacetedFilter title="Device Model" options={facetOptions.l3} selectedValues={facets.l3} onSelect={(v, o, allOpts) => handleSelectFacet('l3', v, o, allOpts)} disabled={facetDisabled.l3} />
+          <FacetedFilter title="Finish" options={facetOptions.l4} selectedValues={facets.l4} onSelect={(v, o, allOpts) => handleSelectFacet('l4', v, o, allOpts)} disabled={facetDisabled.l4} />
+          <FacetedFilter title="Case Type" options={facetOptions.l5} selectedValues={facets.l5} onSelect={(v, o, allOpts) => handleSelectFacet('l5', v, o, allOpts)} disabled={facetDisabled.l5} />
+          <FacetedFilter title="Pattern" options={facetOptions.l6} selectedValues={facets.l6} onSelect={(v, o, allOpts) => handleSelectFacet('l6', v, o, allOpts)} disabled={facetDisabled.l6} />
+          <FacetedFilter title="Color Group" options={facetOptions.l7} selectedValues={facets.l7} onSelect={(v, o, allOpts) => handleSelectFacet('l7', v, o, allOpts)} disabled={facetDisabled.l7} />
+          <FacetedFilter title="Specific Shade" options={facetOptions.l8} selectedValues={facets.l8} onSelect={(v, o, allOpts) => handleSelectFacet('l8', v, o, allOpts)} disabled={facetDisabled.l8} />
+        </div>
         <MasterDrillDownChart rawData={filteredRawData} />
       </div>
 

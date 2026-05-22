@@ -60,13 +60,13 @@ export default function ColorRadarChart({ data }) {
           onValueChange={(value) => setFilters(value)}
           className="mt-4 flex-wrap justify-center gap-2"
         >
-          <ToggleGroupItem value="phones" aria-label="Toggle Phone Cases" className="text-xs data-[state=on]:hover:text-neutral-400">
+          <ToggleGroupItem value="phones" aria-label="Toggle Phone Cases" className="text-xs hover:bg-slate-200 dark:hover:bg-slate-800 data-[state=on]:bg-slate-300 dark:data-[state=on]:bg-slate-700 data-[state=on]:text-slate-900 dark:data-[state=on]:text-slate-100">
             Phone Cases
           </ToggleGroupItem>
-          <ToggleGroupItem value="powerbanks" aria-label="Toggle Power Banks" className="text-xs data-[state=on]:hover:text-neutral-400">
+          <ToggleGroupItem value="powerbanks" aria-label="Toggle Power Banks" className="text-xs hover:bg-slate-200 dark:hover:bg-slate-800 data-[state=on]:bg-slate-300 dark:data-[state=on]:bg-slate-700 data-[state=on]:text-slate-900 dark:data-[state=on]:text-slate-100">
             Power Banks
           </ToggleGroupItem>
-          <ToggleGroupItem value="airpods" aria-label="Toggle AirPods Cases" className="text-xs data-[state=on]:hover:text-neutral-400">
+          <ToggleGroupItem value="airpods" aria-label="Toggle AirPods Cases" className="text-xs hover:bg-slate-200 dark:hover:bg-slate-800 data-[state=on]:bg-slate-300 dark:data-[state=on]:bg-slate-700 data-[state=on]:text-slate-900 dark:data-[state=on]:text-slate-100">
             AirPods Cases
           </ToggleGroupItem>
         </ToggleGroup>

@@ -43,7 +43,8 @@ export async function GET(request) {
       'sohan@zeosmobile.com',
       'sonamm@zeosmobile.com',
       'jyotikat@zeosmobile.com',
-      'samkamalesan05@gmail.com'
+      'samkamalesan05@gmail.com',
+      'Zeosindia@outlook.com'
     ]
 
     const { data: { user } } = await supabase.auth.getUser()
