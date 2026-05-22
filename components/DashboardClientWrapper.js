@@ -149,7 +149,9 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
       if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
       if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
       if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
-      if (facets.l8.size > 0 && row.color && !facets.l8.has(row.color)) return false;
+      
+      const l8Val = row.variant_name || row.color;
+      if (facets.l8.size > 0 && l8Val && !facets.l8.has(l8Val)) return false;
       return true;
     });
   }, [rawData, facets]);
@@ -164,7 +166,8 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
       if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
       if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
       if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
-      if (facets.l8.size > 0 && row.color && !facets.l8.has(row.color)) return false;
+      const l8Val = row.variant_name || row.color;
+      if (facets.l8.size > 0 && l8Val && !facets.l8.has(l8Val)) return false;
       return true;
     });
   }, [dateFilteredData, facets]);
@@ -201,7 +204,7 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
       l5: getOpts(filterUpTo(['l5', 'l6', 'l7', 'l8']), 'case_type'),
       l6: getOpts(filterUpTo(['l6', 'l7', 'l8']), 'print'),
       l7: l7Opts,
-      l8: getOpts(filterUpTo(['l8']), 'color'),
+      l8: Array.from(new Set(filterUpTo(['l8']).map(r => r.variant_name || r.color).filter(Boolean))).sort(),
     };
   }, [dateFilteredData, facets]);
 
