@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, CalendarIcon, User, LogOut } from "lucide-react";
+import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
@@ -52,6 +52,7 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
 
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
+  const [currentLevel, setCurrentLevel] = useState(0);
 
   const [facets, setFacets] = useState({
     l1: new Set(),
@@ -63,6 +64,22 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
     l7: new Set(),
     l8: new Set()
   });
+
+  const handleResetAll = () => {
+    setDateFilter("all");
+    setCustomDate({ start: '', end: '' });
+    setCurrentLevel(0);
+    setFacets({
+      l1: new Set(),
+      l2: new Set(),
+      l3: new Set(),
+      l4: new Set(),
+      l5: new Set(),
+      l6: new Set(),
+      l7: new Set(),
+      l8: new Set()
+    });
+  };
 
   const handleSelectFacet = (level, value, isOnly, allOptionsForLevel) => {
     setFacets(prev => {
@@ -121,6 +138,22 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
     });
   }, [rawData, dateFilter, customDate.start, customDate.end]);
 
+  const facetFilteredHistoricalData = useMemo(() => {
+    if (!rawData) return [];
+    return rawData.filter(row => {
+      const l1 = getL1(row);
+      if (facets.l1.size > 0 && !facets.l1.has(l1)) return false;
+      if (facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
+      if (facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
+      if (facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
+      if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
+      if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
+      if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
+      if (facets.l8.size > 0 && row.color && !facets.l8.has(row.color)) return false;
+      return true;
+    });
+  }, [rawData, facets]);
+
   const filteredRawData = useMemo(() => {
     return dateFilteredData.filter(row => {
       const l1 = getL1(row);
@@ -155,9 +188,9 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
 
     const getOpts = (data, key) => Array.from(new Set(data.map(r => r[key]).filter(Boolean))).sort();
 
-    let l7Opts = ['Black', 'Beige', 'Blue', 'Green', 'Pink', 'Red', 'White', 'Yellow', 'Purple', 'Clear'];
+    let l7Opts = getOpts(filterUpTo(['l7', 'l8']), 'color_group');
     if (facets.l1.has('Lanyards')) {
-      l7Opts = ['Black', 'Beige'];
+      l7Opts = getOpts(filterUpTo(['l7', 'l8']), 'color'); // Lanyards might only have color
     }
 
     return {
@@ -363,7 +396,7 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
       </div>
 
       <div className="w-full">
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           <FacetedFilter title="Master Category" options={facetOptions.l1} selectedValues={facets.l1} onSelect={(v, o, allOpts) => handleSelectFacet('l1', v, o, allOpts)} disabled={facetDisabled.l1} />
           <FacetedFilter title="Device Series" options={facetOptions.l2} selectedValues={facets.l2} onSelect={(v, o, allOpts) => handleSelectFacet('l2', v, o, allOpts)} disabled={facetDisabled.l2} />
           <FacetedFilter title="Device Model" options={facetOptions.l3} selectedValues={facets.l3} onSelect={(v, o, allOpts) => handleSelectFacet('l3', v, o, allOpts)} disabled={facetDisabled.l3} />
@@ -372,8 +405,36 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
           <FacetedFilter title="Pattern" options={facetOptions.l6} selectedValues={facets.l6} onSelect={(v, o, allOpts) => handleSelectFacet('l6', v, o, allOpts)} disabled={facetDisabled.l6} />
           <FacetedFilter title="Color Group" options={facetOptions.l7} selectedValues={facets.l7} onSelect={(v, o, allOpts) => handleSelectFacet('l7', v, o, allOpts)} disabled={facetDisabled.l7} />
           <FacetedFilter title="Specific Shade" options={facetOptions.l8} selectedValues={facets.l8} onSelect={(v, o, allOpts) => handleSelectFacet('l8', v, o, allOpts)} disabled={facetDisabled.l8} />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleResetAll} 
+            className="h-8 border-dashed ml-auto bg-white text-slate-900 hover:bg-slate-900 hover:text-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-100 dark:hover:text-slate-900 transition-colors"
+          >
+            <RotateCcw className="mr-2 h-4 w-4" /> Reset All
+          </Button>
         </div>
-        <MasterDrillDownChart rawData={filteredRawData} />
+        {(() => {
+          const hasActiveFacets = Object.values(facets).some(set => set.size > 0);
+          
+          const handleBarClickOnly = (levelIndex, rawValue) => {
+            const keys = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8'];
+            const facetKey = keys[levelIndex];
+            const allOpts = facetOptions[facetKey];
+            handleSelectFacet(facetKey, rawValue, true, allOpts);
+          };
+
+          return (
+            <MasterDrillDownChart 
+              rawData={filteredRawData} 
+              historicalData={facetFilteredHistoricalData}
+              currentLevel={currentLevel} 
+              setCurrentLevel={setCurrentLevel} 
+              isFiltered={hasActiveFacets} 
+              onBarClickOnly={handleBarClickOnly}
+            />
+          );
+        })()}
       </div>
 
       {/* Render Charts */}
