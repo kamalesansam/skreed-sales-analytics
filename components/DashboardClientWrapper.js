@@ -1,21 +1,55 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/utils/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, CalendarIcon } from "lucide-react";
+import { DollarSign, Package, CalendarIcon, User, LogOut } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { getLiteralDateString, getPastDateString } from '../lib/date-utils';
 import { FacetedFilter } from "./FacetedFilter";
 
-export default function DashboardClientWrapper({ rawData }) {
+export default function DashboardClientWrapper({ rawData, userEmail }) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }, [router, supabase]);
+
+  useEffect(() => {
+    let timeoutId;
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      // 5 minutes = 300,000 ms
+      timeoutId = setTimeout(() => {
+        handleLogout();
+      }, 300000);
+    };
+
+    resetTimer();
+
+    const events = ['mousemove', 'keydown', 'click', 'scroll'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [handleLogout]);
+
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
 
@@ -202,6 +236,31 @@ export default function DashboardClientWrapper({ rawData }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Skreed Sales Analytics</h1>
         <div className="flex items-center gap-2">
+          {userEmail && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <User className="h-5 w-5" />
+                  <span className="sr-only">User menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">Signed in as</p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {userEmail}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:bg-red-500 focus:text-white cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <ThemeToggle />
           <Select value={dateFilter} onValueChange={setDateFilter}>
             <SelectTrigger className="w-[180px] bg-card border-border text-sm">

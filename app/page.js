@@ -3,6 +3,7 @@ import DashboardClientWrapper from "@/components/DashboardClientWrapper";
 
 export default async function Page() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   
   // Step 2: Fetch ALL rows from the shopify_orders_raw table for KPIs
   const { data: rawOrdersData, error } = await supabase
@@ -75,7 +76,7 @@ export default async function Page() {
             <p className="text-sm">{error.message}</p>
           </div>
         )}
-        <DashboardClientWrapper rawData={rawSales} />
+        <DashboardClientWrapper rawData={rawSales} userEmail={user?.email} />
       </div>
     </main>
   );
