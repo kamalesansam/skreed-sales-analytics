@@ -598,7 +598,6 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
         </div>
       </div>
 
-      <SalesAreaChart rawData={filteredRawData} timeline={timeline} />
 
       {/* Metric Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -626,6 +625,9 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
           </CardContent>
         </Card>
       </div>
+
+      <SalesAreaChart rawData={filteredRawData} timeline={timeline} />
+
 
       <div className="w-full">
         <div className="flex flex-wrap items-center gap-2 mb-4">
