@@ -432,7 +432,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-500 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-500">Overview</h2>
+          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-500 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-500">Sales Overview</h2>
           <p className="text-muted-foreground mt-1">
             Analyze your sales performance across the entire catalog.
           </p>
