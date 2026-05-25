@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button';
 import { ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 
 const LEVEL_NAMES = [
-  "Master Category",
+  "Product Category",
+  "Brand / Item Type",
   "Device Series",
   "Device Model",
   "Finish",
@@ -28,13 +29,13 @@ const LEVEL_NAMES = [
   "Specific Shade"
 ];
 
-export default function MasterDrillDownChart({ rawData, historicalData, currentLevel, setCurrentLevel, isFiltered, onBarClickOnly }) {
+export default function MasterDrillDownChart({ rawData, historicalData, currentLevel, setCurrentLevel, isFiltered, onBarClickOnly, facetOptions }) {
   const getL1 = (row) => {
-    if (!isFiltered) {
-      if (['Power Banks', 'AirPods Cases', 'Lanyards', 'Screen Protector Kits'].includes(row.product_type)) {
-        return 'Accessories';
-      }
-    }
+    if (['Apple', 'Samsung', 'Google'].includes(row.brand)) return 'Phone Cases';
+    return 'Accessories';
+  };
+
+  const getL2 = (row) => {
     if (row.product_type === 'Power Banks') return 'Powerbanks';
     if (row.product_type === 'AirPods Cases') return 'AirPods Cases';
     if (row.product_type === 'Lanyards') return 'Lanyards';
@@ -46,41 +47,63 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
   };
 
   const getLevelValue = (row, level) => {
+    const l2 = getL2(row);
+    const isLanyard = l2 === 'Lanyards';
     switch (level) {
       case 0: return getL1(row);
-      case 1: return row.series;
-      case 2: return row.device_model;
-      case 3: return row.finish;
-      case 4: return row.case_type;
-      case 5: return row.print;
-      case 6: return row.color_group;
-      case 7: return row.color || row.variant_name;
+      case 1: return l2;
+      case 2: return isLanyard ? row.type : row.series;
+      case 3: return isLanyard ? row.color : row.device_model;
+      case 4: return row.finish;
+      case 5: return row.case_type;
+      case 6: return row.print;
+      case 7: return row.color_group;
+      case 8: return row.variant_name || (isLanyard ? null : row.color);
       default: return null;
     }
   };
 
   const checkLevelData = (level) => {
-    if (!rawData) return false;
+    if (!rawData || rawData.length === 0) return false;
     for (const row of rawData) {
       if (getLevelValue(row, level) && (Number(row.quantity) || Number(row.total_sales))) return true;
     }
     return false;
   };
 
+  let effectiveLevel = currentLevel;
+  if (rawData && rawData.length > 0 && !checkLevelData(effectiveLevel)) {
+    let found = false;
+    for (let i = currentLevel + 1; i <= 8; i++) {
+      if (checkLevelData(i)) { effectiveLevel = i; found = true; break; }
+    }
+    if (!found) {
+      for (let i = currentLevel - 1; i >= 0; i--) {
+        if (checkLevelData(i)) { effectiveLevel = i; break; }
+      }
+    }
+  }
+
+  React.useEffect(() => {
+    if (effectiveLevel !== currentLevel && rawData && rawData.length > 0) {
+      setCurrentLevel(effectiveLevel);
+    }
+  }, [effectiveLevel, currentLevel, setCurrentLevel, rawData]);
+
   const { canDrillDown, canDrillUp } = useMemo(() => {
     let down = false;
     let up = false;
-    for (let i = currentLevel + 1; i <= 7; i++) {
+    for (let i = effectiveLevel + 1; i <= 8; i++) {
       if (checkLevelData(i)) { down = true; break; }
     }
-    for (let i = currentLevel - 1; i >= 0; i--) {
+    for (let i = effectiveLevel - 1; i >= 0; i--) {
       if (checkLevelData(i)) { up = true; break; }
     }
     return { canDrillDown: down, canDrillUp: up };
-  }, [rawData, currentLevel, isFiltered]);
+  }, [rawData, effectiveLevel]);
 
   const handleDrillDown = () => {
-    for (let i = currentLevel + 1; i <= 7; i++) {
+    for (let i = effectiveLevel + 1; i <= 8; i++) {
       if (checkLevelData(i)) {
         setCurrentLevel(i);
         break;
@@ -89,7 +112,7 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
   };
 
   const handleDrillUp = () => {
-    for (let i = currentLevel - 1; i >= 0; i--) {
+    for (let i = effectiveLevel - 1; i >= 0; i--) {
       if (checkLevelData(i)) {
         setCurrentLevel(i);
         break;
@@ -102,18 +125,29 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
 
     const map = new Map();
 
+    // Zero-value seeding from facetOptions
+    const optionsKey = `l${effectiveLevel + 1}`;
+    if (facetOptions && facetOptions[optionsKey]) {
+      facetOptions[optionsKey].forEach(val => {
+        const genericValues = ['gloss', 'matte', 'printed', 'solids', 'clear'];
+        if (effectiveLevel > 0 && genericValues.includes(String(val).toLowerCase().trim())) {
+          return; // Defer to historicalData for disambiguation seeding
+        }
+        map.set(val, { name: val, rawValue: val, quantity: 0, revenue: 0 });
+      });
+    }
+
     const processRow = (row, isSeed) => {
-      const val = getLevelValue(row, currentLevel);
-      if (!val) return; // Ignore row if it has no data for this specific level
+      const val = getLevelValue(row, effectiveLevel);
+      if (!val) return; 
       
       let label = val;
       
-      // Disambiguation Logic
-      if (currentLevel > 0) {
+      if (effectiveLevel > 0) {
          const genericValues = ['gloss', 'matte', 'printed', 'solids', 'clear'];
          if (genericValues.includes(String(val).toLowerCase().trim())) {
-           const l1 = getL1(row);
-           label = `${val} (${l1})`;
+           const l2 = getL2(row);
+           label = `${val} (${l2})`;
          }
       }
 
@@ -130,23 +164,21 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
       }
     };
 
-    // Seed the map with all valid labels for the currently selected facets (Ghost Labels)
     if (historicalData) {
       historicalData.forEach(row => processRow(row, true));
     }
 
-    // Populate actual active data
     rawData.forEach(row => processRow(row, false));
 
     return Array.from(map.values()).sort((a, b) => {
       if (b.revenue !== a.revenue) return b.revenue - a.revenue;
       return a.name.localeCompare(b.name);
     });
-  }, [rawData, historicalData, currentLevel, isFiltered]);
+  }, [rawData, historicalData, effectiveLevel]);
 
   const handleBarInteractiveClick = (data) => {
     if (onBarClickOnly && data && data.rawValue) {
-      onBarClickOnly(currentLevel, data.rawValue);
+      onBarClickOnly(effectiveLevel, data.rawValue);
       handleDrillDown();
     }
   };
@@ -179,7 +211,7 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
       <CardHeader className="flex flex-col space-y-4 pb-2 border-b border-border">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <CardTitle className="text-xl font-bold">
-            Aggregated Level: {LEVEL_NAMES[currentLevel]}
+            Aggregated Level: {LEVEL_NAMES[effectiveLevel]}
           </CardTitle>
           <div className="flex gap-2">
             <Button 
@@ -206,7 +238,7 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
       <CardContent className="flex-1 pt-6 min-h-[400px]">
         {currentData.length === 0 ? (
           <div className="w-full h-[400px] flex items-center justify-center text-muted-foreground font-medium">
-            No data available for the selected filters at Level: {LEVEL_NAMES[currentLevel]}
+            No data available for the selected filters at Level: {LEVEL_NAMES[effectiveLevel]}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={400} minWidth={200} minHeight={200}>

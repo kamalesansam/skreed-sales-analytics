@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw } from "lucide-react";
+import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
@@ -17,8 +17,9 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { getLiteralDateString, getPastDateString } from '../lib/date-utils';
 import { FacetedFilter } from "./FacetedFilter";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export default function DashboardClientWrapper({ rawData, userEmail }) {
+export default function DashboardClientWrapper({ rawData, userEmail, colorCatalog = [] }) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -62,7 +63,8 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
     l5: new Set(),
     l6: new Set(),
     l7: new Set(),
-    l8: new Set()
+    l8: new Set(),
+    l9: new Set()
   });
 
   const handleResetAll = () => {
@@ -77,11 +79,19 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
       l5: new Set(),
       l6: new Set(),
       l7: new Set(),
-      l8: new Set()
+      l8: new Set(),
+      l9: new Set()
     });
   };
 
   const handleSelectFacet = (level, value, isOnly, allOptionsForLevel) => {
+    const levels = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9'];
+    const levelIdx = levels.indexOf(level);
+
+    if (levelIdx !== -1) {
+      setCurrentLevel(levelIdx);
+    }
+
     setFacets(prev => {
       const newFacets = { ...prev };
       let set = new Set(prev[level]);
@@ -95,18 +105,79 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
         } else {
           if (set.has(value)) set.delete(value);
           else set.add(value);
-          
+
           if (allOptionsForLevel && set.size === allOptionsForLevel.length) {
             set.clear();
           }
         }
       }
       newFacets[level] = set;
+
+      if (levelIdx !== -1) {
+        for (let i = levelIdx + 1; i < levels.length; i++) {
+          newFacets[levels[i]] = new Set();
+        }
+      }
+
+      const tempFilterUpTo = (baseData) => {
+        return baseData.filter(row => {
+          const l1 = getL1(row);
+          const l2 = getL2(row);
+          if (newFacets.l1.size > 0 && !newFacets.l1.has(l1)) return false;
+          if (newFacets.l2.size > 0 && !newFacets.l2.has(l2)) return false;
+
+          const isLanyard = l2 === 'Lanyards';
+          const l3 = isLanyard ? row.type : row.series;
+          if (newFacets.l3.size > 0 && (!l3 || !newFacets.l3.has(l3))) return false;
+
+          const l4 = isLanyard ? row.color : row.device_model;
+          if (newFacets.l4.size > 0 && (!l4 || !newFacets.l4.has(l4))) return false;
+
+          if (newFacets.l5.size > 0 && (!row.finish || !newFacets.l5.has(row.finish))) return false;
+          if (newFacets.l6.size > 0 && (!row.case_type || !newFacets.l6.has(row.case_type))) return false;
+          if (newFacets.l7.size > 0 && (!row.print || !newFacets.l7.has(row.print))) return false;
+          if (newFacets.l8.size > 0 && (!row.color_group || !newFacets.l8.has(row.color_group))) return false;
+
+          const l9Val = row.variant_name || (isLanyard ? null : row.color);
+          if (newFacets.l9.size > 0 && (!l9Val || !newFacets.l9.has(l9Val))) return false;
+
+          return true;
+        });
+      };
+
+      if (rawData) {
+        const resultingData = tempFilterUpTo(rawData);
+        if (resultingData.length > 0) {
+          let inferredL1 = getL1(resultingData[0]);
+          let inferredL2 = getL2(resultingData[0]);
+          let allSameL1 = true;
+          let allSameL2 = true;
+
+          for (let i = 1; i < resultingData.length; i++) {
+            if (getL1(resultingData[i]) !== inferredL1) allSameL1 = false;
+            if (getL2(resultingData[i]) !== inferredL2) allSameL2 = false;
+            if (!allSameL1 && !allSameL2) break;
+          }
+
+          if (allSameL1 && newFacets.l1.size === 0) {
+            newFacets.l1 = new Set([inferredL1]);
+          }
+          if (allSameL2 && newFacets.l2.size === 0) {
+            newFacets.l2 = new Set([inferredL2]);
+          }
+        }
+      }
+
       return newFacets;
     });
   };
 
   const getL1 = (row) => {
+    if (['Apple', 'Samsung', 'Google'].includes(row.brand)) return 'Phone Cases';
+    return 'Accessories';
+  };
+
+  const getL2 = (row) => {
     if (row.product_type === 'Power Banks') return 'Powerbanks';
     if (row.product_type === 'AirPods Cases') return 'AirPods Cases';
     if (row.product_type === 'Lanyards') return 'Lanyards';
@@ -138,91 +209,182 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
     });
   }, [rawData, dateFilter, customDate.start, customDate.end]);
 
+  const getFilterUpTo = useCallback((baseData) => (levelExclusions = []) => {
+    return baseData.filter(row => {
+      const l1 = getL1(row);
+      const l2 = getL2(row);
+      if (!levelExclusions.includes('l1') && facets.l1.size > 0 && !facets.l1.has(l1)) return false;
+      if (!levelExclusions.includes('l2') && facets.l2.size > 0 && !facets.l2.has(l2)) return false;
+
+      const isLanyard = l2 === 'Lanyards';
+
+      const l3 = isLanyard ? row.type : row.series;
+      if (!levelExclusions.includes('l3') && facets.l3.size > 0 && (!l3 || !facets.l3.has(l3))) return false;
+
+      const l4 = isLanyard ? row.color : row.device_model;
+      if (!levelExclusions.includes('l4') && facets.l4.size > 0 && (!l4 || !facets.l4.has(l4))) return false;
+
+      if (!levelExclusions.includes('l5') && facets.l5.size > 0 && (!row.finish || !facets.l5.has(row.finish))) return false;
+      if (!levelExclusions.includes('l6') && facets.l6.size > 0 && (!row.case_type || !facets.l6.has(row.case_type))) return false;
+      if (!levelExclusions.includes('l7') && facets.l7.size > 0 && (!row.print || !facets.l7.has(row.print))) return false;
+      if (!levelExclusions.includes('l8') && facets.l8.size > 0 && (!row.color_group || !facets.l8.has(row.color_group))) return false;
+
+      const l9Val = row.variant_name || (isLanyard ? null : row.color);
+      if (!levelExclusions.includes('l9') && facets.l9.size > 0 && (!l9Val || !facets.l9.has(l9Val))) return false;
+
+      return true;
+    });
+  }, [facets]);
+
   const facetFilteredHistoricalData = useMemo(() => {
     if (!rawData) return [];
-    return rawData.filter(row => {
-      const l1 = getL1(row);
-      if (facets.l1.size > 0 && !facets.l1.has(l1)) return false;
-      if (facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
-      if (facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
-      if (facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
-      if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
-      if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
-      if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
-      
-      const l8Val = row.variant_name || row.color;
-      if (facets.l8.size > 0 && l8Val && !facets.l8.has(l8Val)) return false;
-      return true;
-    });
-  }, [rawData, facets]);
+    return getFilterUpTo(rawData)();
+  }, [rawData, getFilterUpTo]);
 
   const filteredRawData = useMemo(() => {
-    return dateFilteredData.filter(row => {
-      const l1 = getL1(row);
-      if (facets.l1.size > 0 && !facets.l1.has(l1)) return false;
-      if (facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
-      if (facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
-      if (facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
-      if (facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
-      if (facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
-      if (facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
-      const l8Val = row.variant_name || row.color;
-      if (facets.l8.size > 0 && l8Val && !facets.l8.has(l8Val)) return false;
-      return true;
+    return getFilterUpTo(dateFilteredData)();
+  }, [dateFilteredData, getFilterUpTo]);
+
+  const [sortConfig, setSortConfig] = useState({ field: 'order_date', direction: 'desc' });
+
+  const handleSort = (field) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const sortedData = useMemo(() => {
+    if (!filteredRawData) return [];
+    return [...filteredRawData].sort((a, b) => {
+      let aVal = a[sortConfig.field];
+      let bVal = b[sortConfig.field];
+
+      if (sortConfig.field === 'total_sales' || sortConfig.field === 'quantity') {
+        aVal = Number(aVal) || 0;
+        bVal = Number(bVal) || 0;
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
     });
-  }, [dateFilteredData, facets]);
-  
-  const facetOptions = useMemo(() => {
-    const l1Opts = ['Apple', 'Samsung', 'Google Pixel', 'AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
-    
-    const filterUpTo = (levelExclusions = []) => {
-      return dateFilteredData.filter(row => {
-        const l1 = getL1(row);
-        if (!levelExclusions.includes('l1') && facets.l1.size > 0 && !facets.l1.has(l1)) return false;
-        if (!levelExclusions.includes('l2') && facets.l2.size > 0 && row.series && !facets.l2.has(row.series)) return false;
-        if (!levelExclusions.includes('l3') && facets.l3.size > 0 && row.device_model && !facets.l3.has(row.device_model)) return false;
-        if (!levelExclusions.includes('l4') && facets.l4.size > 0 && row.finish && !facets.l4.has(row.finish)) return false;
-        if (!levelExclusions.includes('l5') && facets.l5.size > 0 && row.case_type && !facets.l5.has(row.case_type)) return false;
-        if (!levelExclusions.includes('l6') && facets.l6.size > 0 && row.print && !facets.l6.has(row.print)) return false;
-        if (!levelExclusions.includes('l7') && facets.l7.size > 0 && row.color_group && !facets.l7.has(row.color_group)) return false;
-        return true;
+  }, [filteredRawData, sortConfig]);
+
+  const facetCounts = useMemo(() => {
+    const filterUpToDate = getFilterUpTo(dateFilteredData);
+    const counts = { l1: {}, l2: {}, l3: {}, l4: {}, l5: {}, l6: {}, l7: {}, l8: {}, l9: {} };
+
+    const countMapped = (data, getVal, level) => {
+      data.forEach(r => {
+        const val = getVal(r);
+        if (val) counts[level][val] = (counts[level][val] || 0) + 1;
       });
     };
 
-    const getOpts = (data, key) => Array.from(new Set(data.map(r => r[key]).filter(Boolean))).sort();
+    countMapped(filterUpToDate(['l1']), getL1, 'l1');
+    countMapped(filterUpToDate(['l2']), getL2, 'l2');
+    countMapped(filterUpToDate(['l3']), r => getL2(r) === 'Lanyards' ? r.type : r.series, 'l3');
+    countMapped(filterUpToDate(['l4']), r => getL2(r) === 'Lanyards' ? r.color : r.device_model, 'l4');
+    countMapped(filterUpToDate(['l5']), r => r.finish, 'l5');
+    countMapped(filterUpToDate(['l6']), r => r.case_type, 'l6');
+    countMapped(filterUpToDate(['l7']), r => r.print, 'l7');
+    countMapped(filterUpToDate(['l8']), r => r.color_group, 'l8');
+    countMapped(filterUpToDate(['l9']), r => r.variant_name || (getL2(r) === 'Lanyards' ? null : r.color), 'l9');
 
-    let l7Opts = getOpts(filterUpTo(['l7', 'l8']), 'color_group');
-    if (facets.l1.has('Lanyards')) {
-      l7Opts = getOpts(filterUpTo(['l7', 'l8']), 'color'); // Lanyards might only have color
+    return counts;
+  }, [dateFilteredData, getFilterUpTo]);
+
+  const facetOptions = useMemo(() => {
+    const filterUpToRaw = getFilterUpTo(rawData);
+
+    // Dynamic L1
+    const l1Opts = ['Phone Cases', 'Accessories'];
+
+    // Dynamic L2 based on L1
+    let l2Opts = ['Apple', 'Samsung', 'Google Pixel', 'AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
+    if (facets.l1.has('Phone Cases') && !facets.l1.has('Accessories')) {
+      l2Opts = ['Apple', 'Samsung', 'Google Pixel'];
+    } else if (facets.l1.has('Accessories') && !facets.l1.has('Phone Cases')) {
+      l2Opts = ['AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
+    } else if (facets.l1.size > 0) {
+      // Both selected, show all
+      l2Opts = ['Apple', 'Samsung', 'Google Pixel', 'AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
+    } else {
+      // None selected, actually wait, if they are at L0, MasterDrillDownChart doesn't use L2. 
+      // If they are at L1, and NO filters applied, show all.
+      l2Opts = ['Apple', 'Samsung', 'Google Pixel', 'AirPods Cases', 'Powerbanks', 'Lanyards', 'Screen Protectors'];
+    }
+
+    const getOpts = (data, getVal) => Array.from(new Set(data.map(getVal).filter(Boolean))).sort();
+
+    const rawL8Opts = getOpts(filterUpToRaw(['l8', 'l9']), r => r.color_group);
+    let l8Opts = rawL8Opts;
+
+    // If the current branch supports Color Groups, force inject all 10 Color Groups
+    // We determine this if Phone Cases are explicitly selected or implied.
+    const isPhoneCaseView = facets.l1.has('Phone Cases') ||
+      facets.l2.has('Apple') ||
+      facets.l2.has('Samsung') ||
+      facets.l2.has('Google Pixel') ||
+      (facets.l1.size === 0 && facets.l2.size === 0);
+
+    if (isPhoneCaseView && colorCatalog && colorCatalog.length > 0) {
+      const catalogGroups = Array.from(new Set(colorCatalog.map(c => c.color_group)));
+      l8Opts = Array.from(new Set([...rawL8Opts, ...catalogGroups])).sort();
+    }
+
+    const rawL9Opts = Array.from(new Set(filterUpToRaw(['l9']).map(r => r.variant_name || (getL2(r) === 'Lanyards' ? null : r.color)).filter(Boolean)));
+    let l9Opts = rawL9Opts;
+
+    if (colorCatalog && colorCatalog.length > 0 && facets.l8.size > 0) {
+      const catalogShades = colorCatalog
+        .filter(c => facets.l8.has(c.color_group))
+        .map(c => c.variant_name);
+      l9Opts = Array.from(new Set([...rawL9Opts, ...catalogShades])).sort();
+    } else {
+      l9Opts = Array.from(new Set(l9Opts)).sort();
     }
 
     return {
       l1: l1Opts,
-      l2: getOpts(filterUpTo(['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8']), 'series'),
-      l3: getOpts(filterUpTo(['l3', 'l4', 'l5', 'l6', 'l7', 'l8']), 'device_model'),
-      l4: getOpts(filterUpTo(['l4', 'l5', 'l6', 'l7', 'l8']), 'finish'),
-      l5: getOpts(filterUpTo(['l5', 'l6', 'l7', 'l8']), 'case_type'),
-      l6: getOpts(filterUpTo(['l6', 'l7', 'l8']), 'print'),
-      l7: l7Opts,
-      l8: Array.from(new Set(filterUpTo(['l8']).map(r => r.variant_name || r.color).filter(Boolean))).sort(),
+      l2: l2Opts,
+      l3: getOpts(filterUpToRaw(['l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9']), r => getL2(r) === 'Lanyards' ? r.type : r.series),
+      l4: getOpts(filterUpToRaw(['l4', 'l5', 'l6', 'l7', 'l8', 'l9']), r => getL2(r) === 'Lanyards' ? r.color : r.device_model),
+      l5: getOpts(filterUpToRaw(['l5', 'l6', 'l7', 'l8', 'l9']), r => r.finish),
+      l6: getOpts(filterUpToRaw(['l6', 'l7', 'l8', 'l9']), r => r.case_type),
+      l7: getOpts(filterUpToRaw(['l7', 'l8', 'l9']), r => r.print),
+      l8: l8Opts,
+      l9: l9Opts,
     };
-  }, [dateFilteredData, facets]);
+  }, [rawData, facets, getFilterUpTo, colorCatalog]);
 
-  const l1HasPwrLanyard = facets.l1.has('Powerbanks') || facets.l1.has('Lanyards');
-  const l1HasAirLanyardScreen = facets.l1.has('AirPods Cases') || facets.l1.has('Lanyards') || facets.l1.has('Screen Protectors');
-  const l1IncludesApple = facets.l1.has('Apple');
-  const l1HasLanyardScreen = facets.l1.has('Lanyards') || facets.l1.has('Screen Protectors');
-  const l1HasScreen = facets.l1.has('Screen Protectors');
-  
+  const l2HasPwr = facets.l2.has('Powerbanks');
+  const l2HasAirLanyardScreen = facets.l2.has('AirPods Cases') || facets.l2.has('Lanyards') || facets.l2.has('Screen Protectors');
+  const l2IncludesApple = facets.l2.has('Apple');
+  const l2HasLanyardScreen = facets.l2.has('Lanyards') || facets.l2.has('Screen Protectors');
+  const l2HasScreen = facets.l2.has('Screen Protectors');
+  const l2HasLanyards = facets.l2.has('Lanyards');
+
   const facetDisabled = {
     l1: false,
-    l2: l1HasPwrLanyard,
-    l3: l1HasPwrLanyard,
-    l4: l1HasAirLanyardScreen,
-    l5: !l1IncludesApple,
-    l6: l1HasLanyardScreen,
-    l7: l1HasScreen,
-    l8: l1HasLanyardScreen,
+    l2: false,
+    l3: l2HasPwr,
+    l4: l2HasPwr,
+    l5: l2HasAirLanyardScreen,
+    l6: !l2IncludesApple,
+    l7: l2HasLanyardScreen,
+    l8: l2HasScreen || l2HasLanyards,
+    l9: l2HasScreen || l2HasLanyards,
+  };
+
+  const hasActiveFacets = Object.values(facets).some(set => set.size > 0);
+
+  const handleBarClickOnly = (levelIndex, rawValue) => {
+    const keys = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9'];
+    const facetKey = keys[levelIndex];
+    const allOpts = facetOptions[facetKey];
+    handleSelectFacet(facetKey, rawValue, true, allOpts);
   };
 
   const totalRevenue = useMemo(() => {
@@ -267,23 +429,28 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
   }, [filteredRawData]);
 
   return (
-    <div className="space-y-8">
-      {/* Date Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Skreed Sales Analytics</h1>
-        <div className="flex items-center gap-2">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-500 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-500">Overview</h2>
+          <p className="text-muted-foreground mt-1">
+            Analyze your sales performance across the entire catalog.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="w-[180px] bg-card border-border text-sm">
-              <SelectValue placeholder="Select Date" />
+            <SelectTrigger className="w-[140px] h-9 bg-card border-border shadow-sm">
+              <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue placeholder="Select range" />
             </SelectTrigger>
-            <SelectContent className="bg-card border-border text-foreground">
+            <SelectContent className="border-border bg-card">
               <SelectItem value="all">All Time</SelectItem>
               <SelectItem value="24h">Last 24 Hours</SelectItem>
-              <SelectItem value="week">Last Week</SelectItem>
-              <SelectItem value="month">Last Month</SelectItem>
-              <SelectItem value="quarter">Last Quarter</SelectItem>
-              <SelectItem value="year">Last Year</SelectItem>
-              <SelectItem value="custom">Custom Date</SelectItem>
+              <SelectItem value="week">Last 7 Days</SelectItem>
+              <SelectItem value="month">Last 30 Days</SelectItem>
+              <SelectItem value="quarter">This Quarter</SelectItem>
+              <SelectItem value="year">This Year</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
 
@@ -340,9 +507,9 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
               </Popover>
             </div>
           )}
-          
+
           <ThemeToggle />
-          
+
           {userEmail && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -400,18 +567,19 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
 
       <div className="w-full">
         <div className="flex flex-wrap items-center gap-2 mb-4">
-          <FacetedFilter title="Master Category" options={facetOptions.l1} selectedValues={facets.l1} onSelect={(v, o, allOpts) => handleSelectFacet('l1', v, o, allOpts)} disabled={facetDisabled.l1} />
-          <FacetedFilter title="Device Series" options={facetOptions.l2} selectedValues={facets.l2} onSelect={(v, o, allOpts) => handleSelectFacet('l2', v, o, allOpts)} disabled={facetDisabled.l2} />
-          <FacetedFilter title="Device Model" options={facetOptions.l3} selectedValues={facets.l3} onSelect={(v, o, allOpts) => handleSelectFacet('l3', v, o, allOpts)} disabled={facetDisabled.l3} />
-          <FacetedFilter title="Finish" options={facetOptions.l4} selectedValues={facets.l4} onSelect={(v, o, allOpts) => handleSelectFacet('l4', v, o, allOpts)} disabled={facetDisabled.l4} />
-          <FacetedFilter title="Case Type" options={facetOptions.l5} selectedValues={facets.l5} onSelect={(v, o, allOpts) => handleSelectFacet('l5', v, o, allOpts)} disabled={facetDisabled.l5} />
-          <FacetedFilter title="Pattern" options={facetOptions.l6} selectedValues={facets.l6} onSelect={(v, o, allOpts) => handleSelectFacet('l6', v, o, allOpts)} disabled={facetDisabled.l6} />
-          <FacetedFilter title="Color Group" options={facetOptions.l7} selectedValues={facets.l7} onSelect={(v, o, allOpts) => handleSelectFacet('l7', v, o, allOpts)} disabled={facetDisabled.l7} />
-          <FacetedFilter title="Specific Shade" options={facetOptions.l8} selectedValues={facets.l8} onSelect={(v, o, allOpts) => handleSelectFacet('l8', v, o, allOpts)} disabled={facetDisabled.l8} />
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleResetAll} 
+          <FacetedFilter title="Product Category" options={facetOptions.l1} selectedValues={facets.l1} onSelect={(v, o, allOpts) => handleSelectFacet('l1', v, o, allOpts)} disabled={facetDisabled.l1} counts={facetCounts.l1} />
+          <FacetedFilter title="Brand / Item Type" options={facetOptions.l2} selectedValues={facets.l2} onSelect={(v, o, allOpts) => handleSelectFacet('l2', v, o, allOpts)} disabled={facetDisabled.l2} counts={facetCounts.l2} />
+          <FacetedFilter title="Device Series" options={facetOptions.l3} selectedValues={facets.l3} onSelect={(v, o, allOpts) => handleSelectFacet('l3', v, o, allOpts)} disabled={facetDisabled.l3} counts={facetCounts.l3} />
+          <FacetedFilter title="Device Model" options={facetOptions.l4} selectedValues={facets.l4} onSelect={(v, o, allOpts) => handleSelectFacet('l4', v, o, allOpts)} disabled={facetDisabled.l4} counts={facetCounts.l4} />
+          <FacetedFilter title="Finish" options={facetOptions.l5} selectedValues={facets.l5} onSelect={(v, o, allOpts) => handleSelectFacet('l5', v, o, allOpts)} disabled={facetDisabled.l5} counts={facetCounts.l5} />
+          <FacetedFilter title="Case Type" options={facetOptions.l6} selectedValues={facets.l6} onSelect={(v, o, allOpts) => handleSelectFacet('l6', v, o, allOpts)} disabled={facetDisabled.l6} counts={facetCounts.l6} />
+          <FacetedFilter title="Pattern" options={facetOptions.l7} selectedValues={facets.l7} onSelect={(v, o, allOpts) => handleSelectFacet('l7', v, o, allOpts)} disabled={facetDisabled.l7} counts={facetCounts.l7} />
+          <FacetedFilter title="Color Group" options={facetOptions.l8} selectedValues={facets.l8} onSelect={(v, o, allOpts) => handleSelectFacet('l8', v, o, allOpts)} disabled={facetDisabled.l8} counts={facetCounts.l8} />
+          <FacetedFilter title="Specific Shade" options={facetOptions.l9} selectedValues={facets.l9} onSelect={(v, o, allOpts) => handleSelectFacet('l9', v, o, allOpts)} disabled={facetDisabled.l9} counts={facetCounts.l9} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetAll}
             className="h-8 border-dashed ml-auto bg-white text-slate-900 hover:bg-slate-900 hover:text-slate-50 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-100 dark:hover:text-slate-900 transition-colors"
           >
             <RotateCcw className="mr-2 h-4 w-4" /> Reset All
@@ -419,26 +587,110 @@ export default function DashboardClientWrapper({ rawData, userEmail }) {
         </div>
         {(() => {
           const hasActiveFacets = Object.values(facets).some(set => set.size > 0);
-          
+
           const handleBarClickOnly = (levelIndex, rawValue) => {
-            const keys = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8'];
+            const keys = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9'];
             const facetKey = keys[levelIndex];
             const allOpts = facetOptions[facetKey];
             handleSelectFacet(facetKey, rawValue, true, allOpts);
           };
 
           return (
-            <MasterDrillDownChart 
-              rawData={filteredRawData} 
+            <MasterDrillDownChart
+              rawData={filteredRawData}
               historicalData={facetFilteredHistoricalData}
-              currentLevel={currentLevel} 
-              setCurrentLevel={setCurrentLevel} 
-              isFiltered={hasActiveFacets} 
+              currentLevel={currentLevel}
+              setCurrentLevel={setCurrentLevel}
+              isFiltered={hasActiveFacets}
               onBarClickOnly={handleBarClickOnly}
+              facetOptions={facetOptions}
             />
           );
         })()}
       </div>
+
+      <Card className="mt-6 mb-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Raw Data Evidence</CardTitle>
+          <div className="text-sm text-muted-foreground">
+            Total results: {sortedData.length}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="max-h-96 overflow-y-auto border border-border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">
+                    <div
+                      className="flex items-center gap-2 cursor-pointer hover:text-accent-foreground select-none"
+                      onClick={() => handleSort('order_date')}
+                    >
+                      Date
+                      {sortConfig.field === 'order_date' ? (
+                        sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">
+                    <div
+                      className="flex items-center gap-2 cursor-pointer hover:text-accent-foreground select-none"
+                      onClick={() => handleSort('order_name')}
+                    >
+                      Order #
+                      {sortConfig.field === 'order_name' ? (
+                        sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Series</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Model</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Finish</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Type</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Print</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Color Group</TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Shade</TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right sticky top-0 bg-card z-10">QTY</TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right sticky top-0 bg-card z-10">Sales</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedData.length === 0 ? (
+                  <TableRow className="border-b border-border">
+                    <TableCell colSpan={11} className="text-center text-muted-foreground py-6">
+                      No raw data found for this selection.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedData.map((row, idx) => (
+                    <TableRow key={idx} className="border-b border-border hover:bg-muted/50">
+                      <TableCell className="text-muted-foreground">
+                        {row.order_date ? row.order_date.substring(0, 10) : '-'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{row.order_name || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.series || row.type || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.device_model || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.finish || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.case_type || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.print || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.color_group || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.variant_name || row.color || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-right">{row.quantity || 0}</TableCell>
+                      <TableCell className="text-muted-foreground text-right">
+                        ${Number(row.total_sales || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Render Charts */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

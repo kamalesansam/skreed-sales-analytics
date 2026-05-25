@@ -13,7 +13,8 @@ export function FacetedFilter({
   options,
   selectedValues,
   onSelect,
-  disabled
+  disabled,
+  counts = {}
 }) {
   return (
     <Popover>
@@ -52,6 +53,7 @@ export function FacetedFilter({
             <CommandGroup>
               {options.map((option) => {
                 const isSelected = selectedValues.size === 0 ? true : selectedValues.has(option);
+                const count = counts[option] || 0;
                 return (
                   <CommandItem
                     key={option}
@@ -62,7 +64,7 @@ export function FacetedFilter({
                   >
                     <div className="flex items-center gap-2">
                       <Checkbox checked={isSelected} tabIndex={-1} className="pointer-events-none" />
-                      <span>{option}</span>
+                      <span>{option} <span className="text-muted-foreground text-xs">({count})</span></span>
                     </div>
                     
                     <Button 

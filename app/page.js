@@ -35,14 +35,15 @@ export default async function Page() {
     .limit(30);
   const recentOrders = filterOrders(recentOrdersData).slice(0, 7);
 
-  const [appleRes, samsungRes, googleRes, airpodsRes, pbRes, lanRes, spRes] = await Promise.all([
+  const [appleRes, samsungRes, googleRes, airpodsRes, pbRes, lanRes, spRes, colorCatalogRes] = await Promise.all([
     supabase.from('apple_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, case_type, print, color_group, variant_name'),
     supabase.from('samsung_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name'),
     supabase.from('google_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name'),
     supabase.from('airpods_cases').select('order_date, order_name, total_sales, quantity, device_model, series, print, color_group, variant_name'),
     supabase.from('power_banks').select('order_date, order_name, total_sales, quantity, finish, color_group, variant_name'),
     supabase.from('lanyards').select('order_date, order_name, total_sales, quantity, type, color'),
-    supabase.from('screen_protectors').select('order_date, order_name, total_sales, quantity, iphone_series, variant_title')
+    supabase.from('screen_protectors').select('order_date, order_name, total_sales, quantity, iphone_series, variant_title'),
+    supabase.from('color_catalog').select('variant_name, color_group')
   ]);
 
   const appleData = filterOrders(appleRes.data);
@@ -52,6 +53,7 @@ export default async function Page() {
   const pbData = filterOrders(pbRes.data);
   const lanData = filterOrders(lanRes.data);
   const spData = filterOrders(spRes.data);
+  const colorCatalog = colorCatalogRes.data || [];
 
   const accessoriesData = [
     ...(airpodsData.map(d => ({ ...d, product_type: 'AirPods Cases', brand: 'Accessories' }))),
@@ -76,7 +78,7 @@ export default async function Page() {
             <p className="text-sm">{error.message}</p>
           </div>
         )}
-        <DashboardClientWrapper rawData={rawSales} userEmail={user?.email} />
+        <DashboardClientWrapper rawData={rawSales} userEmail={user?.email} colorCatalog={colorCatalog} />
       </div>
     </main>
   );
