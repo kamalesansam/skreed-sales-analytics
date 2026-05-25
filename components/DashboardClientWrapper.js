@@ -55,6 +55,19 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
   const [currentLevel, setCurrentLevel] = useState(0);
 
+  const handleSetCurrentLevel = (level) => {
+    setCurrentLevel(level);
+    setFacets(prev => {
+      const newFacets = { ...prev };
+      const levels = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9'];
+      // Strictly clear the filter FOR the target level and all deeper levels
+      for (let i = level; i < levels.length; i++) {
+        newFacets[levels[i]] = new Set();
+      }
+      return newFacets;
+    });
+  };
+
   const [facets, setFacets] = useState({
     l1: new Set(),
     l2: new Set(),
@@ -70,7 +83,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   const handleResetAll = () => {
     setDateFilter("all");
     setCustomDate({ start: '', end: '' });
-    setCurrentLevel(0);
+    handleSetCurrentLevel(0);
     setFacets({
       l1: new Set(),
       l2: new Set(),
@@ -600,7 +613,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
               rawData={filteredRawData}
               historicalData={facetFilteredHistoricalData}
               currentLevel={currentLevel}
-              setCurrentLevel={setCurrentLevel}
+              setCurrentLevel={handleSetCurrentLevel}
               isFiltered={hasActiveFacets}
               onBarClickOnly={handleBarClickOnly}
               facetOptions={facetOptions}

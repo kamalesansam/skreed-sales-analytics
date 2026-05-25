@@ -29,6 +29,14 @@ const LEVEL_NAMES = [
   "Specific Shade"
 ];
 
+const ALL_FINISHES = ['Matte', 'Gloss'];
+const ALL_PATTERNS = ['Solids', 'Printed'];
+const ALL_COLOR_GROUPS = [
+  'Playful Pink', 'Mellow Yellow', 'Blissful Blue', 'Go Green Case',
+  'Frosty White', 'Stormy Grey', 'Vivid Violet', 'Roaring Red',
+  'Blushing Coral', 'Basic Brown'
+];
+
 export default function MasterDrillDownChart({ rawData, historicalData, currentLevel, setCurrentLevel, isFiltered, onBarClickOnly, facetOptions }) {
   const getL1 = (row) => {
     if (['Apple', 'Samsung', 'Google'].includes(row.brand)) return 'Phone Cases';
@@ -125,16 +133,21 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
 
     const map = new Map();
 
-    // Zero-value seeding from facetOptions
-    const optionsKey = `l${effectiveLevel + 1}`;
-    if (facetOptions && facetOptions[optionsKey]) {
-      facetOptions[optionsKey].forEach(val => {
-        const genericValues = ['gloss', 'matte', 'printed', 'solids', 'clear'];
-        if (effectiveLevel > 0 && genericValues.includes(String(val).toLowerCase().trim())) {
-          return; // Defer to historicalData for disambiguation seeding
-        }
-        map.set(val, { name: val, rawValue: val, quantity: 0, revenue: 0 });
-      });
+    // UPDATE: Global Zero-Fill Pre-pass using static constants
+    if (effectiveLevel === 4) { // Finish
+      ALL_FINISHES.forEach(finish => map.set(finish, { name: finish, rawValue: finish, quantity: 0, revenue: 0 }));
+    } else if (effectiveLevel === 6) { // Pattern / Print
+      ALL_PATTERNS.forEach(pattern => map.set(pattern, { name: pattern, rawValue: pattern, quantity: 0, revenue: 0 }));
+    } else if (effectiveLevel === 7) { // Color Group
+      ALL_COLOR_GROUPS.forEach(color => map.set(color, { name: color, rawValue: color, quantity: 0, revenue: 0 }));
+    } else {
+      // For other levels, fallback to facetOptions zero-seeding
+      const optionsKey = `l${effectiveLevel + 1}`;
+      if (facetOptions && facetOptions[optionsKey]) {
+        facetOptions[optionsKey].forEach(val => {
+          map.set(val, { name: val, rawValue: val, quantity: 0, revenue: 0 });
+        });
+      }
     }
 
     const processRow = (row, isSeed) => {
@@ -143,14 +156,6 @@ export default function MasterDrillDownChart({ rawData, historicalData, currentL
       
       let label = val;
       
-      if (effectiveLevel > 0) {
-         const genericValues = ['gloss', 'matte', 'printed', 'solids', 'clear'];
-         if (genericValues.includes(String(val).toLowerCase().trim())) {
-           const l2 = getL2(row);
-           label = `${val} (${l2})`;
-         }
-      }
-
       if (!map.has(label)) {
         map.set(label, { name: label, rawValue: val, quantity: 0, revenue: 0 });
       }
