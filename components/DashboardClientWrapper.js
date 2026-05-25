@@ -4,10 +4,11 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown, Clock } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
+import SalesAreaChart from "@/components/SalesAreaChart";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -54,6 +55,39 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
   const [currentLevel, setCurrentLevel] = useState(0);
+  const [timeline, setTimeline] = useState('monthly');
+
+  const getTimelineConfig = useCallback(() => {
+    let days = 0;
+    if (dateFilter === 'all') days = Infinity;
+    else if (dateFilter === 'year') days = 365;
+    else if (dateFilter === 'quarter') days = 90;
+    else if (dateFilter === 'month') days = 30;
+    else if (dateFilter === 'week') days = 7;
+    else if (dateFilter === '24h') days = 1;
+    else if (dateFilter === 'custom' && customDate.start && customDate.end) {
+      const diffTime = Math.abs(new Date(customDate.end) - new Date(customDate.start));
+      days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } else if (dateFilter === 'custom') {
+      days = Infinity;
+    }
+
+    if (days <= 1) {
+      return { available: ['hourly'], default: 'hourly' };
+    } else if (days <= 7) {
+      return { available: ['hourly', 'daily', 'weekly'], default: 'daily' };
+    } else if (days <= 30) {
+      return { available: ['hourly', 'daily', 'weekly'], default: 'weekly' };
+    } else if (days <= 90) {
+      return { available: ['hourly', 'daily', 'weekly', 'monthly'], default: 'weekly' };
+    } else {
+      return { available: ['hourly', 'daily', 'weekly', 'monthly'], default: 'monthly' };
+    }
+  }, [dateFilter, customDate]);
+
+  useEffect(() => {
+    setTimeline(getTimelineConfig().default);
+  }, [dateFilter, customDate, getTimelineConfig]);
 
   const handleSetCurrentLevel = (level) => {
     setCurrentLevel(level);
@@ -467,6 +501,19 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
             </SelectContent>
           </Select>
 
+          <Select value={timeline} onValueChange={setTimeline}>
+            <SelectTrigger className="w-[140px] h-9 bg-card border-border shadow-sm">
+              <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue placeholder="Timeline" />
+            </SelectTrigger>
+            <SelectContent className="border-border bg-card">
+              <SelectItem value="hourly" disabled={!getTimelineConfig().available.includes('hourly')}>Hourly</SelectItem>
+              <SelectItem value="daily" disabled={!getTimelineConfig().available.includes('daily')}>Daily</SelectItem>
+              <SelectItem value="weekly" disabled={!getTimelineConfig().available.includes('weekly')}>Weekly</SelectItem>
+              <SelectItem value="monthly" disabled={!getTimelineConfig().available.includes('monthly')}>Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+
           {dateFilter === 'custom' && (
             <div className="flex items-center gap-2">
               <Popover>
@@ -550,6 +597,8 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
           )}
         </div>
       </div>
+
+      <SalesAreaChart rawData={filteredRawData} timeline={timeline} />
 
       {/* Metric Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
