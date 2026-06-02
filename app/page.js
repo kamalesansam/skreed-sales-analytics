@@ -46,8 +46,17 @@ export default async function Page() {
     supabase.from('color_catalog').select('variant_name, color_group')
   ]);
 
-  const appleData = filterOrders(appleRes.data);
-  const samsungData = filterOrders(samsungRes.data);
+  const appleData = filterOrders(appleRes.data).map(d => {
+    const is13 = (d.series && String(d.series).toLowerCase().includes('13')) || 
+                 (d.device_model && String(d.device_model).toLowerCase().includes('13'));
+    return is13 ? { ...d, finish: 'Matte' } : d;
+  });
+
+  const samsungData = filterOrders(samsungRes.data).map(d => {
+    const isS23 = (d.series && String(d.series).toLowerCase().includes('s23')) || 
+                  (d.device_model && String(d.device_model).toLowerCase().includes('s23'));
+    return isS23 ? { ...d, finish: 'Matte' } : d;
+  });
   const googleData = filterOrders(googleRes.data);
   const airpodsData = filterOrders(airpodsRes.data);
   const pbData = filterOrders(pbRes.data);
