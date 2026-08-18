@@ -10,7 +10,8 @@
  * Safe to re-run: existing subscriptions for these topics are updated in place
  * rather than duplicated, so you will not end up processing every order twice.
  *
- * Needs SHOPIFY_STORE and SHOPIFY_ADMIN_TOKEN in .env.local. The Admin app also
+ * Needs SHOPIFY_STORE plus either SHOPIFY_ADMIN_TOKEN (legacy custom app) or
+ * SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET (Dev Dashboard app). The app also
  * needs the write_webhooks scope (read_orders alone is not enough to register).
  *
  * After running, put the signing secret in your deployment env as
@@ -29,12 +30,15 @@ try {
 } catch { /* rely on the real environment */ }
 
 const store = process.env.SHOPIFY_STORE;
-const token = process.env.SHOPIFY_ADMIN_TOKEN;
-if (!store || !token) {
-  console.error('Missing SHOPIFY_STORE or SHOPIFY_ADMIN_TOKEN (see .env.local).');
+const token = process.env.SHOPIFY_ADMIN_TOKEN; // optional legacy custom-app token
+const clientId = process.env.SHOPIFY_CLIENT_ID;
+const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+if (!store || !(token || (clientId && clientSecret))) {
+  console.error('Missing SHOPIFY_STORE, and either SHOPIFY_ADMIN_TOKEN or');
+  console.error('SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET (see .env.local).');
   process.exit(1);
 }
-const creds = { store, token };
+const creds = { store, token, clientId, clientSecret };
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -53,9 +57,10 @@ const TOPICS = ['ORDERS_CREATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED', 'REFUNDS_
 const PATH = '/api/shopify/webhook';
 
 async function listExisting() {
+  // Reads `uri`. The older `endpoint` field and its URL are both deprecated.
   const data = await shopifyGraphQL(
     `query { webhookSubscriptions(first: 100) {
-       edges { node { id topic endpoint { __typename ... on WebhookHttpEndpoint { callbackUrl } } } }
+       edges { node { id topic uri apiVersion { handle } } }
      } }`,
     {},
     creds
@@ -63,7 +68,8 @@ async function listExisting() {
   return data.webhookSubscriptions.edges.map(e => ({
     id: e.node.id,
     topic: e.node.topic,
-    callbackUrl: e.node.endpoint?.callbackUrl ?? '(non-http endpoint)',
+    uri: e.node.uri ?? '(non-http endpoint)',
+    apiVersion: e.node.apiVersion?.handle ?? '?',
   }));
 }
 
@@ -72,12 +78,12 @@ async function main() {
 
   if (LIST_ONLY) {
     if (!existing.length) console.log('No webhook subscriptions registered.');
-    for (const w of existing) console.log(`  ${w.topic.padEnd(18)} -> ${w.callbackUrl}`);
+    for (const w of existing) console.log(`  ${w.topic.padEnd(18)} -> ${w.uri}  [api ${w.apiVersion}]`);
     return;
   }
 
   if (DELETE_ALL) {
-    const ours = existing.filter(w => w.callbackUrl.includes(PATH));
+    const ours = existing.filter(w => w.uri.includes(PATH));
     if (!ours.length) return console.log('Nothing to delete.');
     for (const w of ours) {
       if (DRY_RUN) { console.log(`  would delete ${w.topic}`); continue; }
@@ -96,13 +102,13 @@ async function main() {
     console.error('It must be HTTPS and publicly reachable - Shopify will not post to localhost.');
     process.exit(1);
   }
-  const callbackUrl = `${String(url).replace(/\/$/, '')}${PATH}`;
-  console.log(`Registering ${TOPICS.length} topics -> ${callbackUrl}${DRY_RUN ? ' (dry run)' : ''}\n`);
+  const uri = `${String(url).replace(/\/$/, '')}${PATH}`;
+  console.log(`Registering ${TOPICS.length} topics -> ${uri}${DRY_RUN ? ' (dry run)' : ''}\n`);
 
   for (const topic of TOPICS) {
-    const already = existing.find(w => w.topic === topic && w.callbackUrl.includes(PATH));
+    const already = existing.find(w => w.topic === topic && w.uri.includes(PATH));
 
-    if (already && already.callbackUrl === callbackUrl) {
+    if (already && already.uri === uri) {
       console.log(`  ${topic.padEnd(18)} already correct, skipping`);
       continue;
     }
@@ -116,7 +122,7 @@ async function main() {
         `mutation Upd($id: ID!, $sub: WebhookSubscriptionInput!) {
            webhookSubscriptionUpdate(id: $id, webhookSubscription: $sub) {
              webhookSubscription { id } userErrors { field message } } }`,
-        { id: already.id, sub: { callbackUrl, format: 'JSON' } }, creds
+        { id: already.id, sub: { uri } }, creds
       );
       const errs = data.webhookSubscriptionUpdate.userErrors;
       if (errs?.length) throw new Error(`${topic}: ${errs.map(e => e.message).join('; ')}`);
@@ -126,7 +132,7 @@ async function main() {
         `mutation Create($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
            webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
              webhookSubscription { id } userErrors { field message } } }`,
-        { topic, sub: { callbackUrl, format: 'JSON' } }, creds
+        { topic, sub: { uri } }, creds
       );
       const errs = data.webhookSubscriptionCreate.userErrors;
       if (errs?.length) throw new Error(`${topic}: ${errs.map(e => e.message).join('; ')}`);

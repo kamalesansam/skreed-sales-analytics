@@ -23,12 +23,21 @@
  * Required env (put them in .env.local):
  *   NEXT_PUBLIC_SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY   - service role, needed to write
- *   SHOPIFY_STORE               - e.g. skreed.myshopify.com
- *   SHOPIFY_ADMIN_TOKEN         - Admin API access token (shpat_...)
+ *   SHOPIFY_STORE               - the myshopify domain, e.g. zeosmobile-com.myshopify.com
+ *                                 (the storefront domain will NOT work)
+ *   SHOPIFY_CLIENT_ID           - Dev Dashboard app credentials
+ *   SHOPIFY_CLIENT_SECRET
  *
- * To create the Shopify token: Shopify admin -> Settings -> Apps and sales channels
- * -> Develop apps -> Create an app -> Configure Admin API scopes -> enable
- * read_orders -> Install -> reveal the token.
+ * Optional:
+ *   SHOPIFY_ADMIN_TOKEN         - a legacy custom-app shpat_ token; if set, it is
+ *                                 used directly and the client id/secret ignored
+ *   SHOPIFY_API_VERSION         - defaults to a currently-supported version
+ *
+ * Where the credentials live: Shopify stopped allowing new legacy custom apps on
+ * 2026-01-01, so there is no shpat_ token to reveal in the admin any more. Open the
+ * Dev Dashboard, pick your app, go to Settings, and copy the Client ID and Client
+ * secret. This code exchanges them for a 24-hour token as needed. The app must be
+ * installed on the store and have the read_orders scope.
  */
 
 import { readFileSync } from 'node:fs';
@@ -53,11 +62,27 @@ const {
   NEXT_PUBLIC_SUPABASE_URL: SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY,
   SHOPIFY_STORE,
-  SHOPIFY_ADMIN_TOKEN,
+  SHOPIFY_CLIENT_ID,
+  SHOPIFY_CLIENT_SECRET,
+  SHOPIFY_ADMIN_TOKEN, // optional: legacy custom-app token, skips the exchange
 } = process.env;
 
+// Dev Dashboard apps have no permanent token; client id + secret are exchanged
+// for a 24-hour one on demand. A legacy shpat_ token is used directly if present.
+const CREDS = {
+  store: SHOPIFY_STORE,
+  token: SHOPIFY_ADMIN_TOKEN,
+  clientId: SHOPIFY_CLIENT_ID,
+  clientSecret: SHOPIFY_CLIENT_SECRET,
+};
+
 function requireEnv() {
-  const missing = Object.entries({ SUPABASE_URL, SERVICE_KEY, SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN })
+  const needed = { SUPABASE_URL, SERVICE_KEY, SHOPIFY_STORE };
+  if (!SHOPIFY_ADMIN_TOKEN) {
+    needed.SHOPIFY_CLIENT_ID = SHOPIFY_CLIENT_ID;
+    needed.SHOPIFY_CLIENT_SECRET = SHOPIFY_CLIENT_SECRET;
+  }
+  const missing = Object.entries(needed)
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {
@@ -85,11 +110,10 @@ async function main() {
   console.log(`  store : ${SHOPIFY_STORE}`);
   console.log(`  range : ${SINCE ? `orders updated on/after ${SINCE}` : 'all orders'}`);
 
-  const creds = { store: SHOPIFY_STORE, token: SHOPIFY_ADMIN_TOKEN };
   const all = await fetchOrders({
     // updated_at, so late refunds on old orders are picked up.
     searchQuery: SINCE ? `updated_at:>=${SINCE}` : '',
-    creds,
+    creds: CREDS,
     onProgress: n => console.log(`  fetched ${n} orders...`),
   });
 
