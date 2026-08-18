@@ -22,7 +22,13 @@ export async function proxy(request) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // If no user and trying to access a protected route, redirect to login
-  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/auth')) {
+  const { pathname } = request.nextUrl
+  const isPublic =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/api/shopify')
+
+  if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -32,5 +38,9 @@ export async function proxy(request) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // api/shopify is excluded deliberately: Shopify's webhook POSTs carry no session
+  // cookie, so letting this proxy see them would redirect every delivery to /login
+  // and the dashboard would silently stop updating. That route does its own auth by
+  // verifying the HMAC signature on the request body.
+  matcher: ['/((?!api/shopify|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }

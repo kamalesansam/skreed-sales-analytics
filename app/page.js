@@ -1,14 +1,17 @@
 import { createClient } from "@/utils/supabase/server";
 import DashboardClientWrapper from "@/components/DashboardClientWrapper";
 
+// Columns every category view now exposes for refund / return tracking.
+const REFUND_COLS =
+  "refund_status, refunded_quantity, refunded_amount, refund_date, refund_note, refund_allocated";
+
+// Supabase caps un-ranged selects at 1000 rows and fails silently past that.
+// Ask for an explicit window so growth never truncates the dashboard without warning.
+const MAX_ROWS = 100000;
+
 export default async function Page() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
-  // Step 2: Fetch ALL rows from the shopify_orders_raw table for KPIs
-  const { data: rawOrdersData, error } = await supabase
-    .from('shopify_orders_raw')
-    .select('order_name, total_sales, quantity');
 
   const filterOrders = (data) => (data || []).filter(order => {
     if (!order.order_name) return true;
@@ -17,43 +20,28 @@ export default async function Page() {
     return parseInt(match[0], 10) >= 1017;
   });
 
-  const rawOrders = filterOrders(rawOrdersData);
-
-  let totalRevenue = 0;
-  let totalItemsSold = 0;
-
-  if (rawOrders) {
-    totalRevenue = rawOrders.reduce((sum, order) => sum + (Number(order.total_sales) || 0), 0);
-    totalItemsSold = rawOrders.reduce((sum, order) => sum + (Number(order.quantity) || 0), 0);
-  }
-
-  // Step 2: Fetch recent orders
-  const { data: recentOrdersData } = await supabase
-    .from('shopify_orders_raw')
-    .select('order_date, order_name, product_title, total_sales')
-    .order('order_date', { ascending: false })
-    .limit(30);
-  const recentOrders = filterOrders(recentOrdersData).slice(0, 7);
-
   const [appleRes, samsungRes, googleRes, airpodsRes, pbRes, lanRes, spRes, colorCatalogRes] = await Promise.all([
-    supabase.from('apple_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, case_type, print, color_group, variant_name'),
-    supabase.from('samsung_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name'),
-    supabase.from('google_cases').select('order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name'),
-    supabase.from('airpods_cases').select('order_date, order_name, total_sales, quantity, device_model, series, print, color_group, variant_name'),
-    supabase.from('power_banks').select('order_date, order_name, total_sales, quantity, finish, color_group, variant_name'),
-    supabase.from('lanyards').select('order_date, order_name, total_sales, quantity, type, color'),
-    supabase.from('screen_protectors').select('order_date, order_name, total_sales, quantity, iphone_series, variant_title'),
-    supabase.from('color_catalog').select('variant_name, color_group')
+    supabase.from('apple_cases').select(`order_date, order_name, total_sales, quantity, device_model, series, finish, case_type, print, color_group, variant_name, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('samsung_cases').select(`order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('google_cases').select(`order_date, order_name, total_sales, quantity, device_model, series, finish, print, color_group, variant_name, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('airpods_cases').select(`order_date, order_name, total_sales, quantity, device_model, series, print, color_group, variant_name, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('power_banks').select(`order_date, order_name, total_sales, quantity, finish, color_group, variant_name, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('lanyards').select(`order_date, order_name, total_sales, quantity, type, color, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('screen_protectors').select(`order_date, order_name, total_sales, quantity, iphone_series, variant_title, ${REFUND_COLS}`).range(0, MAX_ROWS),
+    supabase.from('color_catalog').select('variant_name, color_group').range(0, MAX_ROWS)
   ]);
 
+  const error = appleRes.error || samsungRes.error || googleRes.error || airpodsRes.error
+    || pbRes.error || lanRes.error || spRes.error || colorCatalogRes.error;
+
   const appleData = filterOrders(appleRes.data).map(d => {
-    const is13 = (d.series && String(d.series).toLowerCase().includes('13')) || 
+    const is13 = (d.series && String(d.series).toLowerCase().includes('13')) ||
                  (d.device_model && String(d.device_model).toLowerCase().includes('13'));
     return is13 ? { ...d, finish: 'Matte' } : d;
   });
 
   const samsungData = filterOrders(samsungRes.data).map(d => {
-    const isS23 = (d.series && String(d.series).toLowerCase().includes('s23')) || 
+    const isS23 = (d.series && String(d.series).toLowerCase().includes('s23')) ||
                   (d.device_model && String(d.device_model).toLowerCase().includes('s23'));
     return isS23 ? { ...d, finish: 'Matte' } : d;
   });

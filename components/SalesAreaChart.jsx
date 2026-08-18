@@ -17,49 +17,75 @@ const chartConfig = {
     label: "Sales Volume",
     color: "#3b82f6", // Blue
   },
+  returns: {
+    label: "Returned ($)",
+    color: "#f59e0b", // Amber
+  },
 };
 
 export default function SalesAreaChart({ rawData, timeline = 'daily' }) {
-  const processedData = useMemo(() => {
-    if (!rawData || rawData.length === 0) return [];
+  const { processedData, hasReturns } = useMemo(() => {
+    if (!rawData || rawData.length === 0) return { processedData: [], hasReturns: false };
 
     const map = new Map();
 
-    rawData.forEach(row => {
-      if (!row.order_date) return;
-      const dateObj = new Date(row.order_date);
-      if (isNaN(dateObj.getTime())) return;
-
-      let dateKey = '';
+    // Bucket a date into the current timeline granularity.
+    const keyFor = (dateObj) => {
       if (timeline === 'hourly') {
-        dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}T${String(dateObj.getHours()).padStart(2, '0')}:00`;
-      } else if (timeline === 'weekly') {
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}T${String(dateObj.getHours()).padStart(2, '0')}:00`;
+      }
+      if (timeline === 'weekly') {
         // Group by Sunday of that week
         const d = new Date(dateObj);
-        d.setDate(d.getDate() - d.getDay()); 
-        dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      } else if (timeline === 'monthly') {
-        dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
-      } else { // daily
-        dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        d.setDate(d.getDate() - d.getDay());
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+      if (timeline === 'monthly') {
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+      }
+      return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    };
+
+    const bucket = (key) => {
+      if (!map.has(key)) map.set(key, { date: key, revenue: 0, sales: 0, returns: 0 });
+      return map.get(key);
+    };
+
+    let sawReturn = false;
+
+    rawData.forEach(row => {
+      if (row.order_date) {
+        const dateObj = new Date(row.order_date);
+        if (!isNaN(dateObj.getTime())) {
+          const entry = bucket(keyFor(dateObj));
+          entry.revenue += Number(row.total_sales) || 0;
+          entry.sales += Number(row.quantity) || 0;
+        }
       }
 
-      if (!map.has(dateKey)) {
-        map.set(dateKey, { date: dateKey, revenue: 0, sales: 0 });
+      // Returns land on the day the refund was issued, not the day of the sale -
+      // a refund weeks later belongs to the week the money actually went back.
+      if (row.refund_status === 'returned' && row.refund_date) {
+        const refundObj = new Date(row.refund_date);
+        const amount = Number(row.refunded_amount) || 0;
+        if (!isNaN(refundObj.getTime()) && amount > 0) {
+          bucket(keyFor(refundObj)).returns += amount;
+          sawReturn = true;
+        }
       }
-
-      const entry = map.get(dateKey);
-      entry.revenue += Number(row.total_sales) || 0;
-      entry.sales += Number(row.quantity) || 0;
     });
 
     const result = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 
     // To prevent long decimal places in revenue, round it
-    return result.map(item => ({
-      ...item,
-      revenue: Math.round(item.revenue * 100) / 100
-    }));
+    return {
+      processedData: result.map(item => ({
+        ...item,
+        revenue: Math.round(item.revenue * 100) / 100,
+        returns: Math.round(item.returns * 100) / 100,
+      })),
+      hasReturns: sawReturn,
+    };
   }, [rawData, timeline]);
 
   if (!processedData || processedData.length === 0) {
@@ -72,7 +98,25 @@ export default function SalesAreaChart({ rawData, timeline = 'daily' }) {
 
   return (
     <div className="w-full p-4 bg-card border border-border rounded-lg shadow-sm mb-6">
-      <h2 className="text-xl font-bold mb-4 text-foreground">Sales Over Time</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 className="text-xl font-bold text-foreground">Sales Over Time</h2>
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: chartConfig.revenue.color }} />
+            Revenue
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: chartConfig.sales.color }} />
+            Units
+          </span>
+          {hasReturns && (
+            <span className="flex items-center gap-1.5" title="Plotted on the date the refund was issued, not the date of the original sale.">
+              <span className="h-2 w-2 rounded-full" style={{ background: chartConfig.returns.color }} />
+              Returned
+            </span>
+          )}
+        </div>
+      </div>
       <ChartContainer config={chartConfig} className="aspect-auto h-[300px] w-full">
         <AreaChart data={processedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
@@ -83,6 +127,10 @@ export default function SalesAreaChart({ rawData, timeline = 'daily' }) {
             <linearGradient id="fillSales" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--color-sales)" stopOpacity={0.8}/>
               <stop offset="100%" stopColor="var(--color-sales)" stopOpacity={0.1}/>
+            </linearGradient>
+            <linearGradient id="fillReturns" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--color-returns)" stopOpacity={0.7}/>
+              <stop offset="100%" stopColor="var(--color-returns)" stopOpacity={0.05}/>
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -170,6 +218,9 @@ export default function SalesAreaChart({ rawData, timeline = 'daily' }) {
           />
           <Area yAxisId="left" type="natural" dataKey="revenue" fill="url(#fillRevenue)" fillOpacity={0.8} stroke="var(--color-revenue)" strokeWidth={2} />
           <Area yAxisId="right" type="natural" dataKey="sales" fill="url(#fillSales)" fillOpacity={0.8} stroke="var(--color-sales)" strokeWidth={2} />
+          {hasReturns && (
+            <Area yAxisId="left" type="natural" dataKey="returns" fill="url(#fillReturns)" fillOpacity={0.7} stroke="var(--color-returns)" strokeWidth={2} />
+          )}
         </AreaChart>
       </ChartContainer>
     </div>

@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown, Clock } from "lucide-react";
+import { DollarSign, Package, CalendarIcon, User, LogOut, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown, Clock, Undo2, Percent } from "lucide-react";
 import { BrandRevenueChart, TopModelsChart } from "@/components/DashboardCharts";
 import ColorRadarChart from "@/components/ColorRadarChart";
 import MasterDrillDownChart from "@/components/MasterDrillDownChart";
@@ -16,9 +16,51 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { getLiteralDateString, getPastDateString } from '../lib/date-utils';
+import { getLiteralDateString, getPastDateString, toDateOnly, fromDateOnly } from '../lib/date-utils';
 import { FacetedFilter } from "./FacetedFilter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+// Order status lives alongside the drill-down levels rather than inside them:
+// a return can happen to any product at any level, so it filters independently.
+const STATUS_LABELS = {
+  none: 'Completed',
+  returned: 'Returned',
+  cancelled: 'Cancelled',
+  adjustment: 'Adjusted',
+};
+const STATUS_BY_LABEL = Object.fromEntries(
+  Object.entries(STATUS_LABELS).map(([value, label]) => [label, value])
+);
+const STATUS_OPTIONS = Object.values(STATUS_LABELS);
+// Cancelled orders were never really sales, so they sit out of the totals by
+// default. One click brings them back in.
+const DEFAULT_STATUSES = ['none', 'returned', 'adjustment'];
+
+const statusOf = (row) => row.refund_status || 'none';
+
+const STATUS_STYLES = {
+  none: 'text-muted-foreground',
+  returned: 'text-amber-600 dark:text-amber-500 font-medium',
+  cancelled: 'text-red-500 font-medium',
+  adjustment: 'text-sky-600 dark:text-sky-400 font-medium',
+};
+
+function StatusBadge({ row }) {
+  const status = statusOf(row);
+  const label = STATUS_LABELS[status] || status;
+  const parts = [];
+  if (row.refund_note) parts.push(row.refund_note);
+  if (row.refund_date) parts.push(`Refunded ${String(row.refund_date).substring(0, 10)}`);
+  if (status === 'returned' && row.refund_allocated === false) {
+    parts.push('Shopify gave no line detail for this refund, so the value counts but the units do not.');
+  }
+  return (
+    <span className={`text-xs ${STATUS_STYLES[status] || ''}`} title={parts.join(' — ') || undefined}>
+      {label}
+      {status === 'returned' && row.refund_allocated === false ? ' *' : ''}
+    </span>
+  );
+}
 
 export default function DashboardClientWrapper({ rawData, userEmail, colorCatalog = [] }) {
   const router = useRouter();
@@ -56,6 +98,18 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   const [customDate, setCustomDate] = useState({ start: '', end: '' });
   const [currentLevel, setCurrentLevel] = useState(0);
   const [timeline, setTimeline] = useState('monthly');
+  const [statuses, setStatuses] = useState(new Set(DEFAULT_STATUSES));
+
+  const handleSelectStatus = (label, isOnly) => {
+    const value = STATUS_BY_LABEL[label];
+    setStatuses(prev => {
+      if (isOnly) return new Set([value]);
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  };
 
   const getTimelineConfig = useCallback(() => {
     let days = 0;
@@ -117,6 +171,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   const handleResetAll = () => {
     setDateFilter("all");
     setCustomDate({ start: '', end: '' });
+    setStatuses(new Set(DEFAULT_STATUSES));
     handleSetCurrentLevel(0);
     setFacets({
       l1: new Set(),
@@ -192,8 +247,8 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
         });
       };
 
-      if (rawData) {
-        const resultingData = tempFilterUpTo(rawData);
+      if (statusFilteredRaw) {
+        const resultingData = tempFilterUpTo(statusFilteredRaw);
         if (resultingData.length > 0) {
           let inferredL1 = getL1(resultingData[0]);
           let inferredL2 = getL2(resultingData[0]);
@@ -235,10 +290,30 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
     return 'Other';
   };
 
-  const dateFilteredData = useMemo(() => {
-    if (!rawData) return [];
+  // Status is applied before everything else, so facet counts, charts, the
+  // drill-down and the table all agree on which orders are in scope.
+  // An empty selection means "no status filter", matching how the facet chips behave.
+  // Deliberately not wrapped in useMemo: a manual memo here reads a Set from state
+  // in a way the React Compiler cannot preserve, which makes it bail out of
+  // optimising this entire component. Letting the compiler memoize this itself is
+  // cheaper than hand-memoizing one filter over a few hundred rows.
+  const statusFilteredRaw = (rawData || []).filter(
+    row => statuses.size === 0 || statuses.has(statusOf(row))
+  );
 
-    return rawData.filter(row => {
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    (rawData || []).forEach(row => {
+      const label = STATUS_LABELS[statusOf(row)];
+      if (label) counts[label] = (counts[label] || 0) + 1;
+    });
+    return counts;
+  }, [rawData]);
+
+  const dateFilteredData = useMemo(() => {
+    if (!statusFilteredRaw) return [];
+
+    return statusFilteredRaw.filter(row => {
       if (dateFilter !== 'all' && row.order_date) {
         const rowLiteral = getLiteralDateString(row.order_date);
 
@@ -254,7 +329,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
       }
       return true;
     });
-  }, [rawData, dateFilter, customDate.start, customDate.end]);
+  }, [statusFilteredRaw, dateFilter, customDate.start, customDate.end]);
 
   const getFilterUpTo = useCallback((baseData) => (levelExclusions = []) => {
     return baseData.filter(row => {
@@ -284,9 +359,9 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   }, [facets]);
 
   const facetFilteredHistoricalData = useMemo(() => {
-    if (!rawData) return [];
-    return getFilterUpTo(rawData)();
-  }, [rawData, getFilterUpTo]);
+    if (!statusFilteredRaw) return [];
+    return getFilterUpTo(statusFilteredRaw)();
+  }, [statusFilteredRaw, getFilterUpTo]);
 
   const filteredRawData = useMemo(() => {
     return getFilterUpTo(dateFilteredData)();
@@ -343,7 +418,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
   }, [dateFilteredData, getFilterUpTo]);
 
   const facetOptions = useMemo(() => {
-    const filterUpToRaw = getFilterUpTo(rawData);
+    const filterUpToRaw = getFilterUpTo(statusFilteredRaw);
 
     // Dynamic L1
     const l1Opts = ['Phone Cases', 'Accessories'];
@@ -404,7 +479,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
       l8: l8Opts,
       l9: l9Opts,
     };
-  }, [rawData, facets, getFilterUpTo, colorCatalog]);
+  }, [statusFilteredRaw, facets, getFilterUpTo, colorCatalog]);
 
   const l2HasPwr = facets.l2.has('Powerbanks');
   const l2HasAirLanyardScreen = facets.l2.has('AirPods Cases') || facets.l2.has('Lanyards') || facets.l2.has('Screen Protectors');
@@ -434,13 +509,53 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
     handleSelectFacet(facetKey, rawValue, true, allOpts);
   };
 
-  const totalRevenue = useMemo(() => {
-    return filteredRawData.reduce((sum, order) => sum + (Number(order.total_sales) || 0), 0);
+  // Gross is what was ordered. Returned is product that came back. Adjustments are
+  // refunds where the customer kept the goods (shipping credits, goodwill, price
+  // fixes) - real money out, but not a return. Net is gross minus both.
+  const totals = useMemo(() => {
+    let grossRevenue = 0, grossUnits = 0;
+    let returnedValue = 0, returnedUnits = 0;
+    let adjustedValue = 0, cancelledValue = 0, cancelledUnits = 0;
+    let unallocatedReturns = 0;
+
+    for (const row of filteredRawData) {
+      const sales = Number(row.total_sales) || 0;
+      const qty = Number(row.quantity) || 0;
+      const refundValue = Number(row.refunded_amount) || 0;
+      const refundQty = Number(row.refunded_quantity) || 0;
+      const status = statusOf(row);
+
+      if (status === 'cancelled') {
+        cancelledValue += sales;
+        cancelledUnits += qty;
+        continue; // cancelled orders never became revenue
+      }
+
+      grossRevenue += sales;
+      grossUnits += qty;
+
+      if (status === 'returned') {
+        returnedValue += refundValue;
+        returnedUnits += refundQty;
+        if (row.refund_allocated === false) unallocatedReturns += 1;
+      } else if (status === 'adjustment') {
+        adjustedValue += refundValue;
+      }
+    }
+
+    const netRevenue = grossRevenue - returnedValue - adjustedValue;
+    const netUnits = grossUnits - returnedUnits;
+    const returnRate = grossUnits > 0 ? (returnedUnits / grossUnits) * 100 : 0;
+
+    return {
+      grossRevenue, grossUnits, returnedValue, returnedUnits, adjustedValue,
+      cancelledValue, cancelledUnits, netRevenue, netUnits, returnRate,
+      unallocatedReturns,
+    };
   }, [filteredRawData]);
 
-  const totalItemsSold = useMemo(() => {
-    return filteredRawData.reduce((sum, order) => sum + (Number(order.quantity) || 0), 0);
-  }, [filteredRawData]);
+  const money = (n) =>
+    `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const brandRevenueData = useMemo(() => {
     const brands = ['Apple', 'Samsung', 'Google', 'Accessories'];
@@ -523,17 +638,16 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                     className={`w-[140px] justify-start text-left font-normal bg-card border-border text-sm ${!customDate.start && "text-muted-foreground"}`}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {customDate.start ? format(new Date(customDate.start), "MMM d, yyyy") : <span>Start Date</span>}
+                    {customDate.start ? format(fromDateOnly(customDate.start), "MMM d, yyyy") : <span>Start Date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 border-border bg-card">
                   <Calendar
                     mode="single"
-                    selected={customDate.start ? new Date(customDate.start) : undefined}
+                    selected={customDate.start ? fromDateOnly(customDate.start) : undefined}
                     onSelect={(date) => {
                       if (date) {
-                        const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-                        setCustomDate(prev => ({ ...prev, start: localDate.toISOString() }));
+                        setCustomDate(prev => ({ ...prev, start: toDateOnly(date) }));
                       }
                     }}
                     initialFocus
@@ -548,17 +662,16 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                     className={`w-[140px] justify-start text-left font-normal bg-card border-border text-sm ${!customDate.end && "text-muted-foreground"}`}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {customDate.end ? format(new Date(customDate.end), "MMM d, yyyy") : <span>End Date</span>}
+                    {customDate.end ? format(fromDateOnly(customDate.end), "MMM d, yyyy") : <span>End Date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 border-border bg-card">
                   <Calendar
                     mode="single"
-                    selected={customDate.end ? new Date(customDate.end) : undefined}
+                    selected={customDate.end ? fromDateOnly(customDate.end) : undefined}
                     onSelect={(date) => {
                       if (date) {
-                        const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-                        setCustomDate(prev => ({ ...prev, end: localDate.toISOString() }));
+                        setCustomDate(prev => ({ ...prev, end: toDateOnly(date) }));
                       }
                     }}
                     initialFocus
@@ -603,25 +716,63 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Revenue</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
-              ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
+            <div className="text-3xl font-bold">{money(totals.netRevenue)}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {money(totals.grossRevenue)} gross
+              {totals.adjustedValue > 0 && <> &middot; {money(totals.adjustedValue)} adjustments</>}
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Items Sold</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Items Sold</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
-              {totalItemsSold.toLocaleString()}
+            <div className="text-3xl font-bold">{totals.netUnits.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totals.grossUnits.toLocaleString()} shipped
+              {totals.cancelledUnits > 0 && <> &middot; {totals.cancelledUnits.toLocaleString()} cancelled</>}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Returned</CardTitle>
+            <Undo2 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-amber-600 dark:text-amber-500">
+              {money(totals.returnedValue)}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totals.returnedUnits.toLocaleString()} {totals.returnedUnits === 1 ? 'item' : 'items'} came back
+              {totals.unallocatedReturns > 0 && (
+                <span title="Shopify recorded a refund total for these but no line detail, so the value is counted and the unit count is not.">
+                  {' '}&middot; {totals.unallocatedReturns} without line detail
+                </span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Return Rate</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{totals.returnRate.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              of units shipped
+              {totals.cancelledValue > 0 && <> &middot; {money(totals.cancelledValue)} cancelled</>}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -640,6 +791,14 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
           <FacetedFilter title="Pattern" options={facetOptions.l7} selectedValues={facets.l7} onSelect={(v, o, allOpts) => handleSelectFacet('l7', v, o, allOpts)} disabled={facetDisabled.l7} counts={facetCounts.l7} />
           <FacetedFilter title="Color Group" options={facetOptions.l8} selectedValues={facets.l8} onSelect={(v, o, allOpts) => handleSelectFacet('l8', v, o, allOpts)} disabled={facetDisabled.l8} counts={facetCounts.l8} />
           <FacetedFilter title="Specific Shade" options={facetOptions.l9} selectedValues={facets.l9} onSelect={(v, o, allOpts) => handleSelectFacet('l9', v, o, allOpts)} disabled={facetDisabled.l9} counts={facetCounts.l9} />
+          <div className="h-6 w-[1px] bg-border mx-1" />
+          <FacetedFilter
+            title="Order Status"
+            options={STATUS_OPTIONS}
+            selectedValues={statuses.size === STATUS_OPTIONS.length ? new Set() : new Set(Array.from(statuses).map(s => STATUS_LABELS[s]))}
+            onSelect={(v, only) => handleSelectStatus(v, only)}
+            counts={statusCounts}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -681,8 +840,8 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
           </div>
         </CardHeader>
         <CardContent>
-          <div className="max-h-96 overflow-y-auto border border-border rounded-md">
-            <Table>
+          <div className="max-h-96 overflow-auto border border-border rounded-md">
+            <Table className="min-w-[1100px]">
               <TableHeader>
                 <TableRow className="border-b border-border hover:bg-transparent">
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">
@@ -711,6 +870,7 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                       )}
                     </div>
                   </TableHead>
+                  <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Status</TableHead>
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Series</TableHead>
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Model</TableHead>
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Finish</TableHead>
@@ -719,13 +879,14 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Color Group</TableHead>
                   <TableHead className="text-muted-foreground font-medium sticky top-0 bg-card z-10">Shade</TableHead>
                   <TableHead className="text-muted-foreground font-medium text-right sticky top-0 bg-card z-10">QTY</TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right sticky top-0 bg-card z-10">Returned</TableHead>
                   <TableHead className="text-muted-foreground font-medium text-right sticky top-0 bg-card z-10">Sales</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow className="border-b border-border">
-                    <TableCell colSpan={11} className="text-center text-muted-foreground py-6">
+                    <TableCell colSpan={13} className="text-center text-muted-foreground py-6">
                       No raw data found for this selection.
                     </TableCell>
                   </TableRow>
@@ -736,6 +897,9 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                         {row.order_date ? row.order_date.substring(0, 10) : '-'}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{row.order_name || '-'}</TableCell>
+                      <TableCell>
+                        <StatusBadge row={row} />
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{row.series || row.type || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{row.device_model || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{row.finish || '-'}</TableCell>
@@ -744,6 +908,16 @@ export default function DashboardClientWrapper({ rawData, userEmail, colorCatalo
                       <TableCell className="text-muted-foreground">{row.color_group || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{row.variant_name || row.color || '-'}</TableCell>
                       <TableCell className="text-muted-foreground text-right">{row.quantity || 0}</TableCell>
+                      <TableCell className="text-right">
+                        {Number(row.refunded_amount) > 0 ? (
+                          <span className="text-amber-600 dark:text-amber-500">
+                            {Number(row.refunded_quantity) > 0 ? `${row.refunded_quantity} · ` : ''}
+                            -{money(Number(row.refunded_amount))}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-right">
                         ${Number(row.total_sales || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
